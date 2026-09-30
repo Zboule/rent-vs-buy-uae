@@ -97,14 +97,14 @@ export const SCENARIOS: Scenario[] = [
     path: [-0.07, -0.06, 0.0, 0.03, 0.04, 0.04], tail: 0.03,
   },
   {
+    key: 'bleed', label: 'Slow bleed: -2% a year for good',
+    note: 'No crash, just a long structural decline (oversupply that never clears). About -11% in 6 years.',
+    path: [], tail: -0.02,
+  },
+  {
     key: 'bad', label: 'Bad: -20% then slow decline',
     note: 'Like 2014-2020: a 20% fall over 3 years, then years of drift lower before a weak recovery. About -25% in 6 years.',
     path: [-0.1, -0.07, -0.05, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02], tail: 0.025,
-  },
-  {
-    key: 'veryBad', label: 'Very bad: 2008-style crash',
-    note: 'Prices fall ~45% within 2 years, then a slow rebuild. Still about -39% after 6 years.',
-    path: [-0.25, -0.22, -0.04, 0.0, 0.03, 0.05, 0.06, 0.06], tail: 0.04,
   },
   {
     key: 'chaos', label: 'Regional chaos: lost decade',
@@ -112,9 +112,9 @@ export const SCENARIOS: Scenario[] = [
     path: [-0.12, -0.1, -0.07, -0.05, -0.04, -0.03, -0.02, -0.01, -0.01, 0.0], tail: 0.01,
   },
   {
-    key: 'bleed', label: 'Slow bleed: -2% a year for good',
-    note: 'No crash, just a long structural decline (oversupply that never clears). About -11% in 6 years.',
-    path: [], tail: -0.02,
+    key: 'veryBad', label: 'Very bad: 2008-style crash',
+    note: 'Prices fall ~45% within 2 years, then a slow rebuild. Still about -39% after 6 years.',
+    path: [-0.25, -0.22, -0.04, 0.0, 0.03, 0.05, 0.06, 0.06], tail: 0.04,
   },
   {
     key: 'trend', label: 'Constant trend (your %)',

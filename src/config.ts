@@ -98,7 +98,7 @@ export const DEFAULT_CONFIG: Config = {
     investReturn: [0.04, 0.06, 0.08, 0.1],
   },
   emirates: ['DXB'],
-  cycles: ['veryGood', 'good', 'neutral', 'bad', 'veryBad', 'chaos', 'bleed'],
+  cycles: ['veryGood', 'good', 'neutral', 'bleed', 'bad', 'chaos', 'veryBad'],
   emFees: Object.fromEntries(
     EMIRATES.map((e) => [e, Object.fromEntries(EM_FIELDS.map((f) => [f.key, ({ ...P, ...PRESETS[e] } as Record<string, number>)[f.key]]))]),
   ) as Record<Emirate, Record<string, number>>,
@@ -121,7 +121,7 @@ export function dims(c: Config): Dim[] {
   return [
     ...FIELDS.map((f) => ({ key: f.key, label: f.label, values: c.lists[f.key], tag: (v: number | string) => f.tag(v as number) })),
     { key: 'emirate', label: 'Emirate', values: c.emirates, tag: (v: number | string) => EM_LABEL[v as Emirate] },
-    { key: 'cycle', label: 'Price scenario', values: c.cycles, tag: (v: number | string) => CYCLES.find((s) => s.key === v)!.label },
+    { key: 'cycle', label: 'Price scenario', values: CYCLES.map((x) => x.key).filter((k) => c.cycles.includes(k)), tag: (v: number | string) => CYCLES.find((s) => s.key === v)!.label },
   ];
 }
 
