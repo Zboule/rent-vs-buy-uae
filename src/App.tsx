@@ -178,18 +178,18 @@ function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) =
         <>
           <div className="encodings">
             <div>
-              <EncSelect label="Colour" value={colorBy} field="colorBy" />
+              <EncSelect label="Colour shows" value={colorBy} field="colorBy" />
               <Key d={dimOf(colorBy)!} kind="color" />
             </div>
             {styleBy && (
               <div>
-                <EncSelect label="Line style" value={styleBy} field="styleBy" />
+                <EncSelect label="Line style shows" value={styleBy} field="styleBy" />
                 <Key d={dimOf(styleBy)!} kind="style" />
               </div>
             )}
             {widthBy && (
               <div>
-                <EncSelect label="Thickness" value={widthBy} field="widthBy" />
+                <EncSelect label="Thickness shows" value={widthBy} field="widthBy" />
                 <Key d={dimOf(widthBy)!} kind="width" />
               </div>
             )}
