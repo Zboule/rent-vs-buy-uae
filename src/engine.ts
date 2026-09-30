@@ -74,6 +74,8 @@ export interface Scenario {
   path: number[];
   /** yearly price change after the path runs out */
   tail: number;
+  /** yearly return on the money not spent on the home (invested in global markets) */
+  ret: number;
 }
 
 // Full price paths, researched Sept 2026. Context: prices already 4-7% off the 2025 peak after
@@ -83,43 +85,43 @@ export interface Scenario {
 export const SCENARIOS: Scenario[] = [
   {
     key: 'veryGood', label: 'Very good: boom resumes',
-    note: 'Conflict ends fast, inflows of wealthy residents return, supply is absorbed. About +45% in 6 years.',
-    path: [0.07, 0.08, 0.07, 0.06, 0.05, 0.05], tail: 0.04,
+    note: 'Conflict ends fast, inflows of wealthy residents return, supply is absorbed. Global markets strong.',
+    path: [0.07, 0.08, 0.07, 0.06, 0.05, 0.05], tail: 0.04, ret: 0.07,
   },
   {
     key: 'good', label: 'Good: soft landing',
-    note: 'A small dip as the supply wave lands, then steady growth. About +19% in 6 years.',
-    path: [-0.02, 0.02, 0.04, 0.05, 0.05, 0.04], tail: 0.035,
+    note: 'A small dip as the supply wave lands, then steady growth.',
+    path: [-0.02, 0.02, 0.04, 0.05, 0.05, 0.04], tail: 0.035, ret: 0.065,
   },
   {
     key: 'neutral', label: 'Neutral: Fitch correction, recovery',
-    note: 'The 10-15% correction the rating agencies expect over 2 years, then back to normal growth. About -13% by year 3, -3% in 6 years.',
-    path: [-0.07, -0.06, 0.0, 0.03, 0.04, 0.04], tail: 0.03,
+    note: 'The 10-15% correction the rating agencies expect over 2 years, then back to normal growth.',
+    path: [-0.07, -0.06, 0.0, 0.03, 0.04, 0.04], tail: 0.03, ret: 0.06,
   },
   {
     key: 'bleed', label: 'Slow bleed: -2% a year for good',
-    note: 'No crash, just a long structural decline (oversupply that never clears). About -11% in 6 years.',
-    path: [], tail: -0.02,
+    note: 'No crash, just a long structural decline (oversupply that never clears).',
+    path: [], tail: -0.02, ret: 0.06,
   },
   {
     key: 'bad', label: 'Bad: -20% then slow decline',
-    note: 'Like 2014-2020: a 20% fall over 3 years, then years of drift lower before a weak recovery. About -25% in 6 years.',
-    path: [-0.1, -0.07, -0.05, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02], tail: 0.025,
+    note: 'Like 2014-2020: a 20% fall over 3 years, then years of drift lower before a weak recovery.',
+    path: [-0.1, -0.07, -0.05, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02], tail: 0.025, ret: 0.055,
   },
   {
     key: 'chaos', label: 'Regional chaos: lost decade',
-    note: 'The conflict drags on, expats leave, no recovery for 10 years. About -35% in 6 years, -37% in 10.',
-    path: [-0.12, -0.1, -0.07, -0.05, -0.04, -0.03, -0.02, -0.01, -0.01, 0.0], tail: 0.01,
+    note: 'The conflict drags on, expats leave, no recovery for 10 years. Money invested abroad is unaffected.',
+    path: [-0.12, -0.1, -0.07, -0.05, -0.04, -0.03, -0.02, -0.01, -0.01, 0.0], tail: 0.01, ret: 0.06,
   },
   {
     key: 'veryBad', label: 'Very bad: 2008-style crash',
-    note: 'Prices fall ~45% within 2 years, then a slow rebuild. Still about -39% after 6 years.',
-    path: [-0.25, -0.22, -0.04, 0.0, 0.03, 0.05, 0.06, 0.06], tail: 0.04,
+    note: 'A global crisis like 2008: prices fall ~45% within 2 years, then a slow rebuild, and your investments suffer too.',
+    path: [-0.25, -0.22, -0.04, 0.0, 0.03, 0.05, 0.06, 0.06], tail: 0.04, ret: 0.03,
   },
   {
     key: 'trend', label: 'Constant trend (your %)',
     note: 'The price change per year you enter, every year.',
-    path: [], tail: 0,
+    path: [], tail: 0, ret: 0.06,
   },
 ];
 

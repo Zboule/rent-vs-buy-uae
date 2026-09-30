@@ -41,8 +41,8 @@ export const FIELDS: FieldDef[] = [
   { key: 'rentFollows', label: 'Rents follow price swings by', kind: 'pct', group: 'Market', hint: 'In 2009 rents fell ~30% while prices fell ~50%: about 60%', tag: (v) => `rents follow ${pc(v)}` },
   { key: 'priceGrowth', label: 'Constant trend, per year', kind: 'pct', group: 'Market', hint: 'Only for the "Constant trend" scenario', tag: (v) => `prices ${sg(v)}/yr` },
 
-  { key: 'investReturn', label: 'Return on money not spent on the home', kind: 'pct', group: 'Opportunity cost', hint: 'What the down payment, fees and monthly savings would earn invested', tag: (v) => `invest ${pc(v)}` },
-  { key: 'investTax', label: 'Tax on that return', kind: 'pct', group: 'Opportunity cost', hint: '0 in the UAE', tag: (v) => `tax ${pc(v)}` },
+  { key: 'investReturn', label: 'Investment return, constant trend', kind: 'pct', group: 'Market', hint: 'Only for "Constant trend"; the other scenarios set their own below', tag: (v) => `invest ${pc(v)}` },
+  { key: 'investTax', label: 'Tax on investment returns', kind: 'pct', group: 'Market', hint: '0 in the UAE', tag: (v) => `tax ${pc(v)}` },
 
   { key: 'buyAgentPct', label: 'Agent commission', kind: 'pct', group: 'Buying costs', hint: '+ 5% VAT', tag: (v) => `buy agent ${pc(v)}` },
   { key: 'bankFeePct', label: 'Bank arrangement fee', kind: 'pct', group: 'Buying costs', hint: '% of loan, + VAT', tag: (v) => `bank fee ${pc(v)}` },
@@ -80,6 +80,7 @@ export interface Config {
   emirates: Emirate[];
   cycles: ScenarioKey[];
   emFees: Record<Emirate, Record<string, number>>;
+  scenRet: Record<string, number>; // each scenario's investment return
   horizon: number; // years shown after the (latest) buy year
   colorBy: string;
   styleBy: string;
@@ -95,16 +96,17 @@ export const DEFAULT_CONFIG: Config = {
     downPct: [0.2],
     rent: [240_000],
     rentGrowth: [0.05],
-    investReturn: [0.04, 0.06, 0.08, 0.1],
+    investReturn: [0.06],
   },
   emirates: ['DXB'],
   cycles: ['veryGood', 'good', 'neutral', 'bleed', 'bad', 'chaos', 'veryBad'],
   emFees: Object.fromEntries(
     EMIRATES.map((e) => [e, Object.fromEntries(EM_FIELDS.map((f) => [f.key, ({ ...P, ...PRESETS[e] } as Record<string, number>)[f.key]]))]),
   ) as Record<Emirate, Record<string, number>>,
+  scenRet: Object.fromEntries(SCENARIOS.map((x) => [x.key, x.ret])),
   horizon: 10,
   colorBy: 'cycle',
-  styleBy: 'investReturn',
+  styleBy: 'downPct',
   widthBy: 'downPct',
 };
 
@@ -132,7 +134,7 @@ export const MAX_LINES = 160;
 // rentFollows only to the others
 const ignored = (combo: Record<string, number | string>) => [
   ...((combo.downPct as number) >= 1 ? LOAN_KEYS : []),
-  ...(combo.cycle === 'trend' ? ['rentFollows'] : ['priceGrowth']),
+  ...(combo.cycle === 'trend' ? ['rentFollows'] : ['priceGrowth', 'investReturn']),
 ];
 const LOAN_KEYS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
 
@@ -167,6 +169,7 @@ export function lines(c: Config): { lines: LineDef[]; total: number; varying: Di
         ...c.emFees[em],
         emirate: em,
         scenario: combo.cycle as ScenarioKey,
+        investReturn: combo.cycle === 'trend' ? combo.investReturn : c.scenRet[combo.cycle as string],
         maxHold: c.horizon,
       } as unknown as Params;
       const X = combo.buyYear as number;
@@ -209,6 +212,10 @@ export function readConfig(): Config {
       const v = q.get(`${e}.${f.key}`);
       if (v != null && Number.isFinite(Number(v))) c.emFees[e][f.key] = Number(v);
     }
+  for (const x of SCENARIOS) {
+    const v = q.get(`ret.${x.key}`);
+    if (v != null && Number.isFinite(Number(v))) c.scenRet[x.key] = Number(v);
+  }
   for (const k of ['horizon'] as const) if (q.get(k)) c.horizon = Number(q.get(k));
   for (const k of ['colorBy', 'styleBy', 'widthBy'] as const) if (q.get(k) != null) c[k] = q.get(k)!;
   return c;
@@ -222,6 +229,7 @@ export function writeConfig(c: Config) {
   if (!same(c.cycles, d.cycles)) q.set('cy', c.cycles.join('_'));
   for (const e of EMIRATES)
     for (const f of EM_FIELDS) if (c.emFees[e][f.key] !== d.emFees[e][f.key]) q.set(`${e}.${f.key}`, String(c.emFees[e][f.key]));
+  for (const x of SCENARIOS) if (c.scenRet[x.key] !== d.scenRet[x.key]) q.set(`ret.${x.key}`, String(c.scenRet[x.key]));
   if (c.horizon !== d.horizon) q.set('horizon', String(c.horizon));
   for (const k of ['colorBy', 'styleBy', 'widthBy'] as const) if (c[k] !== d[k]) q.set(k, c[k]);
   const h = q.toString();

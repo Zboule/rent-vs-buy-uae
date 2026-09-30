@@ -372,32 +372,61 @@ function cumulative(key: ScenarioKey, years: number): number {
   return v - 1;
 }
 
-function ScenarioPicker({ value, onChange }: { value: ScenarioKey[]; onChange: (v: ScenarioKey[]) => void }) {
+function ScenarioPicker({
+  value, onChange, ret, onRet,
+}: { value: ScenarioKey[]; onChange: (v: ScenarioKey[]) => void; ret: Record<string, number>; onRet: (k: ScenarioKey, v: number) => void }) {
   const all = CYCLES.map((x) => x.key);
   const fmt = (x: number) => `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`;
   return (
     <div className="field">
       <span className="field-l">
-        Price scenario
+        Scenario: property prices + return on the money you invest instead
         {value.length > 1 && <span className="badge">{value.length} values</span>}
       </span>
-      <div className="scen-head muted"><span /><span>price after 3y · 6y · 10y</span></div>
       {CYCLES.map((sc) => {
         const on = value.includes(sc.key);
         return (
-          <label key={sc.key} className={on ? 'scen on' : 'scen'}>
-            <input type="checkbox" checked={on} onChange={() => onChange(all.filter((k) => (k === sc.key ? !on : value.includes(k))))} />
+          <div key={sc.key} className={on ? 'scen on' : 'scen'}>
+            <input
+              type="checkbox"
+              aria-label={sc.label}
+              checked={on}
+              onChange={() => onChange(all.filter((k) => (k === sc.key ? !on : value.includes(k))))}
+            />
             <span className="scen-t">
-              <span className="scen-l">{sc.label}</span>
+              <span className="scen-l" onClick={() => onChange(all.filter((k) => (k === sc.key ? !on : value.includes(k))))}>{sc.label}</span>
               {sc.key !== 'trend' && (
-                <span className="scen-c">{fmt(cumulative(sc.key, 3))} · {fmt(cumulative(sc.key, 6))} · {fmt(cumulative(sc.key, 10))}</span>
+                <span className="scen-c">
+                  prices {fmt(cumulative(sc.key, 3))} in 3y · {fmt(cumulative(sc.key, 6))} in 6y · {fmt(cumulative(sc.key, 10))} in 10y
+                </span>
               )}
+              {sc.key !== 'trend' && <RetInput value={ret[sc.key]} onChange={(v) => onRet(sc.key, v)} />}
               <span className="hint">{sc.note}</span>
             </span>
-          </label>
+          </div>
         );
       })}
     </div>
+  );
+}
+
+function RetInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [txt, setTxt] = useState(String(+(value * 100).toFixed(2)));
+  useEffect(() => setTxt(String(+(value * 100).toFixed(2))), [value]);
+  return (
+    <span className="scen-ret">
+      investments earn
+      <input
+        inputMode="decimal"
+        value={txt}
+        onChange={(e) => {
+          setTxt(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value.trim() !== '' && Number.isFinite(n)) onChange(+(n / 100).toFixed(5));
+        }}
+      />
+      % a year
+    </span>
   );
 }
 
@@ -420,14 +449,19 @@ function ConfigForm({ c, setC, total }: { c: Config; setC: (f: (o: Config) => Co
             {count(g) > 0 && <span className="gsum">{count(g)} varying</span>}
           </summary>
           <div className="gbody">
+            {g === 'Market' && (
+              <div className="span2">
+                <ScenarioPicker
+                  value={c.cycles}
+                  onChange={(v) => setC((o) => ({ ...o, cycles: v }))}
+                  ret={c.scenRet}
+                  onRet={(k, v) => setC((o) => ({ ...o, scenRet: { ...o.scenRet, [k]: v } }))}
+                />
+              </div>
+            )}
             {FIELDS.filter((f) => f.group === g).map((f) => (
               <ListField key={f.key} label={f.label} hint={f.hint} kind={f.kind} values={c.lists[f.key]} onChange={(v) => setList(f.key, v)} />
             ))}
-            {g === 'Market' && (
-              <div className="span2">
-                <ScenarioPicker value={c.cycles} onChange={(v) => setC((o) => ({ ...o, cycles: v }))} />
-              </div>
-            )}
           </div>
         </details>
       ))}

@@ -15,7 +15,13 @@ Just the configuration and one graph. **Every option takes one value or several,
 commas** (`7, 5, 3, 1, -2`), and every combination of values is one line: 5 price trends x 4
 investment returns x 2 mortgage terms = 40 lines. Colour, line style and thickness each follow
 one varying option (selectable); tap a value to isolate its lines, tap a year to list every line
-with its value, break-even and first-year mortgage payment vs rent. A cash buyer ignores the
+with its value, break-even and first-year mortgage payment vs rent.
+
+**Scenarios** bundle a yearly property price path and the return earned on the money not
+spent on the home (invested globally): very good (boom resumes, 7%), good (soft landing, 6.5%),
+neutral (Fitch correction then recovery, 6%), slow bleed (-2%/yr, 6%), bad (-20% then drift,
+5.5%), regional chaos (lost decade, 6%: money abroad is unaffected), very bad (2008-style global
+crash, 3%). Every return is editable; a "constant trend" scenario takes your own % values. A cash buyer ignores the
 mortgage options, so it does not multiply lines.
 
 ## What the number means

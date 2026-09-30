@@ -234,3 +234,6 @@ h2 { font-size: 1.02rem; margin: 0 0 4px; letter-spacing: -0.01em; }
 .scen-l { font-size: 0.86rem; font-weight: 600; }
 .scen-c { font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--text2); }
 .scen-head { font-size: 0.7rem; }
+.scen-l { cursor: pointer; }
+.scen-ret { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text2); margin: 2px 0; }
+.scen-ret input { width: 52px; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 6px; padding: 2px 6px; font-size: 16px; text-align: right; }
