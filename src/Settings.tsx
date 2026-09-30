@@ -352,7 +352,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
   const noteFor = (f: FieldDef) => {
     if (LOAN_KEYS.includes(f.key)) {
       if (allCash) return 'Not used: every line is a cash buyer';
-      if (someCash) return 'Cash buyer lines ignore this';
+      if (someCash) return 'Cash buyer lines ignore this, so they draw once';
     }
     if (f.key === 'rentFollows' && c.cycles.length === 1 && c.cycles[0] === 'trend') return 'Not used by Constant trend';
     if ((f.key === 'rentAgentPct' || f.key === 'moveCost') && c.lists.moveEveryYears.every((v) => v === 0)) return 'Not used: the renter never moves';

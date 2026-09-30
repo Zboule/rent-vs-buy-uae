@@ -53,8 +53,8 @@
     --s1: #1fae5f; --s2: #7f7bf2; --s3: #1996b5; --s4: #b8850f; --s5: #d5509f; --s6: #7f9a2c; --s7: #c4392f; --s8: #a8895a;
     --sheet: #1c1c1e;
     --shade-step: 0.22;
-    --buy-zone: rgba(76, 155, 240, 0.09);
-    --rent-zone: rgba(255, 138, 76, 0.09);
+    --buy-zone: rgba(10, 132, 255, 0.09);
+    --rent-zone: rgba(255, 69, 58, 0.08);
     --glyph: #8e8e93;
     --buy-ink: #6aaeff;
     --rent-ink: #ff9a66;
@@ -372,7 +372,7 @@ input { font: inherit; color: inherit; }
 .mx-group th { text-align: center !important; padding-bottom: 2px !important; border-bottom: 0 !important; color: var(--label) !important; font-weight: 600 !important; }
 .mx-leaf { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; }
 .mx-leaf .swatch { display: inline-block !important; margin: 0 !important; }
-@media (min-width: 1024px) { .mx { max-width: 640px; } }
+
 .count[aria-expanded='true'] .count-chev { transform: rotate(90deg); }
 .count-chev { transition: transform 0.2s; }
 
@@ -391,3 +391,10 @@ input { font: inherit; color: inherit; }
   .mx .mx-corner { font-size: 10px; }
 }
 .mx-be { min-height: 13px; }
+
+/* ---------------------------------------------------------------- round 7 */
+button.mx-leaf { width: 100%; min-height: 44px; justify-content: flex-end; border-radius: 8px; padding: 2px 0; color: inherit; font: inherit; font-size: 12px; }
+button.mx-leaf[aria-pressed='true'] { color: var(--tint); font-weight: 650; }
+.mx tbody th { vertical-align: middle; }
+.scard-body { padding-left: 50px !important; }
+@media (max-width: 480px) { .scard-body { padding-left: 50px !important; } }

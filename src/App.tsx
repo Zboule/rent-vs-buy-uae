@@ -62,7 +62,7 @@ export default function App() {
           </button>
         ) : !settingsVisible ? (
           <button className="bb" onClick={toSettings}>
-            Assumptions{cnt.varying.length ? ` · ${cnt.varying.length} varying` : ''} <span aria-hidden>›</span>
+            Assumptions{cnt.varying.length ? ` · ${cnt.varying.length} compared` : ''} <span aria-hidden>›</span>
           </button>
         ) : null}
       </div>
@@ -129,8 +129,13 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   c: Config; setC: SetC; lines: LineDef[]; enc: Encoding; cnt: LineCount; onCount: () => void;
 }) {
   const styled: Styled[] = ls.map((l) => ({ ...l, ...enc.line(l.combo) }));
-  const [fk, fv] = c.focus ? c.focus.split(':') : [null, null];
-  const inFocus = (l: Styled) => !fk || String(l.combo[fk]) === fv;
+  // focus: "key:value" (one option value) or "col:<combination>" (one column of the matrix)
+  const sep = c.focus ? c.focus.indexOf(':') : -1;
+  const fk = c.focus && sep > 0 ? c.focus.slice(0, sep) : null;
+  const fv = c.focus && sep > 0 ? c.focus.slice(sep + 1) : null;
+  const vkeys = cnt.varying.map((d) => d.key).filter((k) => k !== 'cycle');
+  const colKey = (l: LineDef) => vkeys.map((k) => `${k}=${l.combo[k]}`).join('&');
+  const inFocus = (l: Styled) => !fk || (fk === 'col' ? colKey(l) === fv : String(l.combo[fk]) === fv);
   const [pinned, setPinned] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [customHz, setCustomHz] = useState(false);
@@ -196,7 +201,6 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   // readout: a scenario × "everything else" matrix when the scenario and something else both vary,
   // a plain list otherwise. The matrix names every line once (its row + its column).
   const matrix = enc.colorKey === 'cycle' && cnt.varying.length > 1;
-  const colKey = (l: Styled) => Object.keys(l.combo).filter((k) => k !== 'cycle').map((k) => `${k}=${l.combo[k]}`).join('&');
   const cols: { key: string; sample: Styled }[] = [];
   for (const l of styled) if (!cols.some((x) => x.key === colKey(l))) cols.push({ key: colKey(l), sample: l });
   const scenRows = CYCLES.filter((s) => atSell.some((x) => x.l.combo.cycle === s.key));
@@ -213,6 +217,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
       .sort(([a], [b]) => rank(a) - rank(b))
       .map(([k, v]) => (k === 'cycle' ? v.split(':')[0] : v));
   const isCustomHz = !PRESETS.includes(c.horizon);
+  const colLabel = (key: string) => nameOf(styled.find((l) => colKey(l) === key) ?? styled[0], true).join(' · ');
 
   return (
     <>
@@ -248,7 +253,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
       </Sheet>
 
       <div className="plot" onMouseLeave={() => setHover(null)}>
-        <div className="y-title">How much buying saves you, AED</div>
+        <div className="y-title">{styled.length > 7 && !fk ? 'Tap a scenario or column below to isolate its lines' : 'How much buying saves you, AED'}</div>
         <ResponsiveContainer width="100%" height={CHART_H}>
           <LineChart
             data={data}
@@ -305,7 +310,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
         {fk && (
           <div className="focus-pill">
             <button onClick={() => setC((o) => ({ ...o, focus: null }))}>
-              Only {fk === 'cycle' ? shortScenario(fv!) : fv} <span aria-hidden>×</span>
+              Only {fk === 'cycle' ? shortScenario(fv!) : fk === 'col' ? colLabel(fv!) : fv} <span aria-hidden>×</span>
             </button>
           </div>
         )}
@@ -344,10 +349,15 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                           const label = grouped ? leaf || ((sample.combo.downPct as number) >= 1 ? 'no loan' : '') : nameOf(sample, true).join(' · ') || 'All';
                           return (
                             <th key={key}>
-                              <span className="mx-leaf">
+                              <button
+                                className="mx-leaf"
+                                aria-pressed={c.focus === `col:${key}`}
+                                aria-label={`Show only ${nameOf(sample, true).join(', ')}`}
+                                onClick={() => setC((o) => ({ ...o, focus: o.focus === `col:${key}` ? null : `col:${key}` }))}
+                              >
                                 <Swatch color={color} dash={glyph.dash} w={26} width={glyph.width + 0.5} />
                                 <span>{label}</span>
-                              </span>
+                              </button>
                             </th>
                           );
                         })}
@@ -390,7 +400,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                 ))}
               </tbody>
             </table>
-            <p className="mx-foot">Positive: buying then selling cost less than renting. “From 3y”: buying wins if you keep the home at least 3 years. Tap a value to find its line, a scenario to show only it.</p>
+            <p className="mx-foot">Positive: buying then selling cost less than renting. “From 3y”: buying wins if you keep the home at least 3 years.</p>
           </div>
         ) : (
           <ul className="ro-list">

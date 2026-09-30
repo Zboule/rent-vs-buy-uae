@@ -11,11 +11,18 @@ modelled on the UAE's real cycles. Every value is editable and every scenario is
 
 ## What you see
 
-Just the configuration and one graph. **Every option takes one value or several, separated by
-commas** (`7, 5, 3, 1, -2`), and every combination of values is one line: 5 price trends x 4
-investment returns x 2 mortgage terms = 40 lines. Colour, line style and thickness each follow
-one varying option (selectable); tap a value to isolate its lines, tap a year to list every line
-with its value, break-even and first-year mortgage payment vs rent.
+One graph plus your assumptions. The headline answers the question for the selected sell year
+("Buying wins in 3 of 7 scenarios by 2032"). **Every option can take several values**: tap
+**Compare** on any option, pick or type a value, and the button previews the result
+("Add 3% · 21 → 42 lines"). Every combination is one line; the counter explains the product in
+plain words ("21 lines: 7 scenarios × 3 ways to buy"), merging options that only apply to some
+lines (a cash buyer has no mortgage rate, so it draws once).
+
+Line identity is deterministic: colour = scenario, dash = down payment, a lighter/thinner stroke =
+the next compared option. Below the chart, the readout is the legend: a list when one option
+varies, a scenario × way-to-buy matrix otherwise. Tap a scenario or a column to isolate its lines,
+tap a value or the chart to highlight a line, step the sell year with ‹ ›. The whole view,
+including focus and sell year, lives in the URL hash.
 
 **Scenarios** bundle a yearly property price path and the return earned on the money not
 spent on the home (invested globally): very good (boom resumes, 7%), good (soft landing, 6.5%),
