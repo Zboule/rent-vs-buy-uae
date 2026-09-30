@@ -163,12 +163,10 @@ function Headline({ r, real }: { r: BuyResult; real: boolean }) {
   );
 }
 
-// categorical slots, fixed order (validated palette)
+// categorical slots, fixed order (validated palette): one hue per price trend × market cycle
 const SLOTS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
-// emirate × financing are carried by the line style, so colour stays for the market
-const DASH: Record<string, string | undefined> = {
-  'DXB-loan': undefined, 'AUH-loan': '7 4', 'DXB-cash': '2 3', 'AUH-cash': '9 3 2 3',
-};
+// line styles for the other dimensions (investment return × emirate × financing), in fixed order
+const DASHES = ['', '9 4', '2 3', '12 3 2 3', '5 5', '1 3', '16 6', '6 2 2 2 2 2'];
 const EM_LABEL: Record<Emirate, string> = { DXB: 'Dubai', AUH: 'Abu Dhabi' };
 const FIN_LABEL: Record<Financing, string> = { loan: 'mortgage', cash: 'cash buyer' };
 // optimistic -> pessimistic
@@ -178,7 +176,7 @@ const RETURNS = [0.04, 0.06, 0.08, 0.1];
 const signed = (x: number) => `${x >= 0 ? '+' : ''}${pct(x)}`;
 
 /** Round tick values (1/2/2.5/5 × 10^n) covering lo..hi, always including 0. */
-function niceTicks(lo: number, hi: number, target = 5): number[] {
+function niceTicks(lo: number, hi: number, target = 6): number[] {
   const raw = Math.max(1, hi - lo) / target;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => x >= raw)!;
@@ -187,7 +185,26 @@ function niceTicks(lo: number, hi: number, target = 5): number[] {
   return out;
 }
 
-interface Series { key: string; name: string; color: string; dash?: string; mine: boolean; byRet: Record<string, SellRow[]> }
+interface Series {
+  key: string;
+  name: string;
+  color: string;
+  colorKey: string;
+  colorName: string;
+  dash: string;
+  styleKey: string;
+  styleName: string;
+  mine: boolean;
+  rows: SellRow[];
+}
+
+function DashSwatch({ dash, color = 'currentColor', width = 2 }: { dash: string; color?: string; width?: number }) {
+  return (
+    <svg width="30" height="8" className="dashsw">
+      <line x1="0" y1="4" x2="30" y2="4" stroke={color} strokeWidth={width} strokeDasharray={dash || undefined} />
+    </svg>
+  );
+}
 
 function PresetCompare({
   p, custom, X, real, cmp, setCmp,
@@ -196,6 +213,7 @@ function PresetCompare({
     const cur = cmp[k] as string[];
     setCmp({ ...cmp, [k]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] });
   };
+  const [focus, setFocus] = useState<string | null>(null);
   const scenarios = SCENARIOS.filter((x) => x.key !== 'custom' || p.scenario === 'custom');
   const trendKeys = ['in', ...TRENDS.map(String)].filter((k) => cmp.g.includes(k));
   const scKeys = scenarios.map((x) => x.key).filter((k) => cmp.sc.includes(k));
@@ -205,49 +223,55 @@ function PresetCompare({
   const trendVal = (k: string) => (k === 'in' ? p.priceGrowth : Number(k));
   const retVal = (k: string) => (k === 'in' ? p.investReturn : Number(k));
   const trendLabel = (k: string) => (k === 'in' ? `Your input, ${signed(p.priceGrowth)}/yr` : `${TREND_NAME[k]}, ${signed(Number(k))}/yr`);
-  const retLabel = (k: string) => (k === 'in' ? `your input, ${pct(p.investReturn)}` : pct(Number(k)));
+  const retLabel = (k: string) => `invest ${k === 'in' ? pct(p.investReturn) : pct(Number(k))}`;
 
-  const combos = trendKeys.flatMap((g) => scKeys.map((sc) => ({ g, sc })));
-  const tooMany = combos.length > SLOTS.length;
+  // colour = price trend × market cycle; line style = investment return × emirate × financing
+  const colorCombos = trendKeys.flatMap((g) => scKeys.map((sc) => ({ g, sc })));
+  const styleCombos = retKeys.flatMap((r) => emKeys.flatMap((em) => finKeys.map((fin) => ({ r, em, fin }))));
+  const tooMany = colorCombos.length > SLOTS.length || styleCombos.length > DASHES.length;
 
   const series = useMemo<Series[]>(() => {
     const out: Series[] = [];
-    combos.slice(0, SLOTS.length).forEach(({ g, sc }, ci) => {
-      for (const em of emKeys)
-        for (const fin of finKeys) {
-          const byRet: Record<string, SellRow[]> = {};
-          for (const r of retKeys) {
-            const q: Params = {
-              ...p,
-              ...(em !== p.emirate ? { ...PRESETS[em], emirate: em } : {}),
-              scenario: sc,
-              priceGrowth: trendVal(g),
-              investReturn: retVal(r),
-              downPct: fin === 'cash' ? 1 : p.downPct,
-            };
-            byRet[r] = simulateBuy(q, X, custom).rows;
-          }
-          const name = [
-            trendKeys.length > 1 || g !== 'in' ? trendLabel(g) : '',
-            scKeys.length > 1 || sc !== 'steady' ? SCENARIOS.find((x) => x.key === sc)!.label : '',
-            emKeys.length > 1 || em !== p.emirate ? EM_LABEL[em] : '',
-            finKeys.length > 1 || fin !== 'loan' ? FIN_LABEL[fin] : '',
-          ].filter(Boolean).join(' · ') || 'Your inputs';
-          out.push({
-            key: `${g}|${sc}|${em}|${fin}`,
-            name,
-            color: SLOTS[ci],
-            dash: DASH[`${em}-${fin}`],
-            mine: g === 'in' && sc === p.scenario && em === p.emirate && (fin === 'cash') === (p.downPct >= 1),
-            byRet,
-          });
-        }
+    colorCombos.slice(0, SLOTS.length).forEach(({ g, sc }, ci) => {
+      const colorName = [
+        trendKeys.length > 1 || g !== 'in' ? trendLabel(g) : '',
+        scKeys.length > 1 || sc !== 'steady' ? SCENARIOS.find((x) => x.key === sc)!.label : '',
+      ].filter(Boolean).join(' · ') || 'Your market inputs';
+      styleCombos.slice(0, DASHES.length).forEach(({ r, em, fin }, si) => {
+        const q: Params = {
+          ...p,
+          ...(em !== p.emirate ? { ...PRESETS[em], emirate: em } : {}),
+          scenario: sc,
+          priceGrowth: trendVal(g),
+          investReturn: retVal(r),
+          downPct: fin === 'cash' ? 1 : p.downPct,
+        };
+        const styleName = [
+          retKeys.length > 1 || r !== 'in' ? retLabel(r) : '',
+          emKeys.length > 1 || em !== p.emirate ? EM_LABEL[em] : '',
+          finKeys.length > 1 || fin !== 'loan' ? FIN_LABEL[fin] : '',
+        ].filter(Boolean).join(' · ') || 'your inputs';
+        out.push({
+          key: `${g}|${sc}|${r}|${em}|${fin}`,
+          name: `${colorName} · ${styleName}`,
+          color: SLOTS[ci],
+          colorKey: `${g}|${sc}`,
+          colorName,
+          dash: DASHES[si],
+          styleKey: `${r}|${em}|${fin}`,
+          styleName,
+          mine: g === 'in' && sc === p.scenario && r === 'in' && em === p.emirate && (fin === 'cash') === (p.downPct >= 1),
+          rows: simulateBuy(q, X, custom).rows,
+        });
+      });
     });
     return out;
   }, [p, custom, X, cmp]);
 
+  const colors = [...new Map(series.map((s) => [s.colorKey, s])).values()];
+  const styles = [...new Map(series.map((s) => [s.styleKey, s])).values()];
   const v = (r: SellRow) => (real ? r.advantageReal : r.advantage);
-  const all = series.flatMap((s) => retKeys.flatMap((r) => s.byRet[r].map(v)));
+  const all = series.flatMap((s) => s.rows.map(v));
   const lo = Math.min(0, ...all);
   const ticks = niceTicks(lo, Math.max(0, ...all)).filter((t) => t >= lo || t === 0);
   const yDomain = [Math.min(lo * 1.1, ticks[0]), ticks[ticks.length - 1]];
@@ -255,13 +279,17 @@ function PresetCompare({
     const i = rows.findIndex((_, j) => rows.slice(j).every((x) => x.advantage > 0));
     return i < 0 ? null : rows[i].held;
   };
+  const dim = (s: Series) => focus != null && s.colorKey !== focus && s.styleKey !== focus;
 
-  const Box = ({ on, label, onClick, dash }: { on: boolean; label: string; onClick: () => void; dash?: string }) => (
+  const data = (series[0]?.rows ?? []).map((row, i) => {
+    const d: Record<string, number> = { year: NOW + row.sellYear, held: row.held };
+    for (const s of series) d[s.key] = v(s.rows[i]);
+    return d;
+  });
+
+  const Box = ({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) => (
     <label className={on ? 'cbx on' : 'cbx'}>
       <input type="checkbox" checked={on} onChange={onClick} />
-      {dash !== undefined && (
-        <svg width="22" height="8" className="dashsw"><line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" strokeWidth="2" strokeDasharray={dash || undefined} /></svg>
-      )}
       {label}
     </label>
   );
@@ -280,94 +308,97 @@ function PresetCompare({
           ))}
         </div>
         <div className="cmp-g">
-          <div className="cmp-h">Investment return (one panel each)</div>
+          <div className="cmp-h">Investment return</div>
           {['in', ...RETURNS.map(String)].map((k) => (
             <Box key={k} on={cmp.r.includes(k)} label={k === 'in' ? `Your input, ${pct(p.investReturn)}/yr` : `${pct(Number(k))}/yr`} onClick={() => toggle('r', k)} />
           ))}
           <div className="cmp-h">Emirate fees</div>
           {(['DXB', 'AUH'] as Emirate[]).map((e) => (
-            <Box key={e} on={cmp.em.includes(e)} label={EM_LABEL[e]} dash={DASH[`${e}-loan`] ?? ''} onClick={() => toggle('em', e)} />
+            <Box key={e} on={cmp.em.includes(e)} label={EM_LABEL[e]} onClick={() => toggle('em', e)} />
           ))}
           <div className="cmp-h">Financing</div>
           {(['loan', 'cash'] as Financing[]).map((f) => (
-            <Box key={f} on={cmp.fin.includes(f)} label={f === 'loan' ? `Mortgage (${pct(1 - Math.min(1, p.downPct))} loan)` : 'Cash buyer'} dash={DASH[`DXB-${f}`] ?? ''} onClick={() => toggle('fin', f)} />
+            <Box key={f} on={cmp.fin.includes(f)} label={f === 'loan' ? `Mortgage (${pct(1 - Math.min(1, p.downPct))} loan)` : 'Cash buyer'} onClick={() => toggle('fin', f)} />
           ))}
         </div>
       </div>
-      {tooMany && <p className="warn small">Colours are capped at 8 trend × cycle combinations; untick some to see the rest.</p>}
-      {series.length === 0 || retKeys.length === 0 ? (
+      {tooMany && <p className="warn small">Showing the first 8 colours and 8 line styles; untick some boxes to see the rest.</p>}
+      {series.length === 0 ? (
         <p className="muted">Tick at least one box in each group.</p>
       ) : (
         <>
-          <div className="cmp-legend">
-            {series.map((s) => (
-              <div key={s.key} className="cmp-li">
-                <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke={s.color} strokeWidth={s.mine ? 3 : 2} strokeDasharray={s.dash} /></svg>
-                <span>{s.name}</span>
+          <div className="keys">
+            <div className="key-col">
+              <div className="cmp-h">Colour</div>
+              {colors.map((s) => (
+                <button key={s.colorKey} className={focus === s.colorKey ? 'key on' : 'key'} onClick={() => setFocus(focus === s.colorKey ? null : s.colorKey)}>
+                  <DashSwatch dash="" color={s.color} width={3} /> {s.colorName}
+                </button>
+              ))}
+            </div>
+            {styles.length > 1 && (
+              <div className="key-col">
+                <div className="cmp-h">Line style</div>
+                {styles.map((s) => (
+                  <button key={s.styleKey} className={focus === s.styleKey ? 'key on' : 'key'} onClick={() => setFocus(focus === s.styleKey ? null : s.styleKey)}>
+                    <DashSwatch dash={s.dash} /> {s.styleName}
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-          <div className={retKeys.length > 1 ? 'panels multi' : 'panels'}>
-            {retKeys.map((r) => {
-              const data = series[0].byRet[r].map((row, i) => {
-                const d: Record<string, number> = { year: NOW + row.sellYear, held: row.held };
-                for (const s of series) d[s.key] = v(s.byRet[r][i]);
-                return d;
-              });
-              return (
-                <div className="panel" key={r}>
-                  <div className="panel-t">Investments earn {retLabel(r)}/yr</div>
-                  <ResponsiveContainer width="100%" height={retKeys.length > 1 ? 220 : 300}>
-                    <LineChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid vertical={false} stroke="var(--grid)" />
-                      <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={14} />
-                      <YAxis domain={yDomain} ticks={ticks} tickFormatter={(x) => abbr(x)} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={56} tickLine={false} axisLine={false} />
-                      <ReferenceLine y={0} stroke="var(--axis)" strokeWidth={1.5} />
-                      <Tooltip
-                        cursor={{ stroke: 'var(--axis)', strokeDasharray: '3 3' }}
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null;
-                          const d = payload[0].payload as Record<string, number>;
-                          const sorted = [...series].sort((a, b) => d[b.key] - d[a.key]);
-                          return (
-                            <div className="tip">
-                              <div className="tip-t">Sell in {d.year} (held {d.held}y), invest at {retLabel(r)}</div>
-                              {sorted.map((s) => (
-                                <div key={s.key} className="tip-row">
-                                  <span className="sw" style={{ background: s.color }} />
-                                  <span className="tip-n">{s.name}</span>
-                                  <span className={d[s.key] >= 0 ? 'c-buy' : 'c-rent'}>{d[s.key] >= 0 ? '+' : ''}{abbr(d[s.key])}</span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        }}
-                      />
-                      {series.map((s) => (
-                        <Line key={s.key} dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={s.mine ? 3 : 2}
-                          strokeDasharray={s.dash} dot={false} activeDot={{ r: 4, stroke: 'var(--panel)', strokeWidth: 2 }} isAnimationActive={false} />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              );
-            })}
+          <p className="hint">Tap a colour or line style to highlight its curves.</p>
+          <div className="chart">
+            <ResponsiveContainer width="100%" height={380}>
+              <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="var(--grid)" />
+                <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={14} />
+                <YAxis domain={yDomain} ticks={ticks} tickFormatter={(x) => abbr(x)} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={56} tickLine={false} axisLine={false} />
+                <ReferenceLine y={0} stroke="var(--axis)" strokeWidth={1.5} />
+                <Tooltip
+                  cursor={{ stroke: 'var(--axis)', strokeDasharray: '3 3' }}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0].payload as Record<string, number>;
+                    const sorted = series.filter((s) => !dim(s)).sort((a, b) => d[b.key] - d[a.key]);
+                    return (
+                      <div className="tip">
+                        <div className="tip-t">Sell in {d.year} (held {d.held}y)</div>
+                        {sorted.map((s) => (
+                          <div key={s.key} className="tip-row">
+                            <DashSwatch dash={s.dash} color={s.color} />
+                            <span className="tip-n">{s.name}</span>
+                            <span className={d[s.key] >= 0 ? 'c-buy' : 'c-rent'}>{d[s.key] >= 0 ? '+' : ''}{abbr(d[s.key])}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }}
+                />
+                {series.map((s) => (
+                  <Line key={s.key} dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={s.mine ? 3 : 2}
+                    strokeOpacity={dim(s) ? 0.12 : 1} strokeDasharray={s.dash || undefined} dot={false}
+                    activeDot={dim(s) ? false : { r: 4, stroke: 'var(--panel)', strokeWidth: 2 }} isAnimationActive={false} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
           </div>
           <div className="table-wrap">
             <table className="grid be-table">
               <thead>
                 <tr>
                   <th>Break-even holding period</th>
-                  {retKeys.map((r) => <th key={r}>invest {retLabel(r)}</th>)}
+                  {styles.map((s) => <th key={s.styleKey}>{s.styleName}</th>)}
                 </tr>
               </thead>
               <tbody>
-                {series.map((s) => (
-                  <tr key={s.key}>
-                    <td><span className="sw" style={{ background: s.color }} /> {s.name}</td>
-                    {retKeys.map((r) => {
-                      const b = breakEven(s.byRet[r]);
-                      return <td key={r} className={b == null ? 'c-rent' : 'c-buy'}>{b == null ? 'never' : `${b}y`}</td>;
+                {colors.map((c) => (
+                  <tr key={c.colorKey}>
+                    <td><span className="sw" style={{ background: c.color }} /> {c.colorName}</td>
+                    {styles.map((st) => {
+                      const s = series.find((x) => x.colorKey === c.colorKey && x.styleKey === st.styleKey)!;
+                      const b = breakEven(s.rows);
+                      return <td key={st.styleKey} className={b == null ? 'c-rent' : 'c-buy'}>{b == null ? 'never' : `${b}y`}</td>;
                     })}
                   </tr>
                 ))}

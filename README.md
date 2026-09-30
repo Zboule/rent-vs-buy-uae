@@ -11,8 +11,9 @@ modelled on the UAE's real cycles. Every value is editable and every scenario is
 
 ## What you see
 
-- **Presets compared**: tick market scenarios, emirates and financing (mortgage vs cash). Each
-  combination is one curve of "buy minus rent" wealth against the sell year.
+- **Presets compared**: tick price trends (optimistic to pessimistic), market cycles, investment returns,
+  emirates and financing. Every combination is one curve on a single chart (colour = price trend x
+  cycle, line style = return x emirate x financing), plus a break-even table.
 - **Buy in X, sell in Y**: the advantage for every sell year, for the selected buy year.
 - **Heatmap**: every buy year (rows) × every holding period (columns). The outlined cell is the
   break-even holding period.
