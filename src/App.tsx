@@ -21,13 +21,6 @@ export default function App() {
     <div className="page">
       <header className="hero">
         <h1>Rent or buy, UAE</h1>
-        <p className="intro">
-          One line per combination of the values you enter. Each line shows, for every year you could sell,{' '}
-          <b>the cost of renting minus the cost of buying then selling</b>. Every month the mortgage payment plus owning
-          costs is compared with the rent: whichever side pays less invests the difference at that line's return, and
-          the renter invests the down payment and fees from day one. Above zero (blue area), buying was cheaper. Below
-          zero (orange area), renting was.
-        </p>
       </header>
       <div className="layout">
         <main className="results">
