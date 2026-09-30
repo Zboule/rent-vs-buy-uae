@@ -237,3 +237,22 @@ h2 { font-size: 1.02rem; margin: 0 0 4px; letter-spacing: -0.01em; }
 .scen-l { cursor: pointer; }
 .scen-ret { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text2); margin: 2px 0; }
 .scen-ret input { width: 52px; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 6px; padding: 2px 6px; font-size: 16px; text-align: right; }
+.skey-wrap { overflow-x: auto; width: 100%; }
+.skey { border-collapse: collapse; font-size: 0.76rem; font-variant-numeric: tabular-nums; width: 100%; }
+.skey th { color: var(--muted); font-weight: 500; text-align: right; padding: 2px 5px; white-space: nowrap; }
+.skey td { text-align: right; padding: 1px 5px; white-space: nowrap; }
+.skey .skey-n { text-align: left; color: var(--muted); }
+.skey .skey-then { color: var(--muted); border-left: 1px solid var(--border); }
+.skey tr { cursor: pointer; }
+.skey-name td { text-align: left; font-weight: 600; font-size: 0.82rem; padding-top: 8px; color: var(--text); }
+.skey-name .swatch { vertical-align: middle; margin-right: 4px; }
+.skey-name.on td { text-decoration: underline; }
+.skey-ret { font-weight: 400; color: var(--text2); margin-left: 8px; font-size: 0.76rem; }
+.skey-rent td { color: var(--muted); }
+.skey .dim { opacity: 0.35; }
+.encodings { flex-direction: column; }
+@media (max-width: 560px) {
+  .skey-ret { display: block; margin: 0 0 0 36px; }
+  .skey th, .skey td { padding: 1px 3px; }
+  .skey-name td { white-space: normal; }
+}

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts';
-import { breakEvenOf, SCENARIOS, type Emirate, type ScenarioKey } from './engine';
+import { breakEvenOf, NEUTRAL_GROWTH, SCENARIOS, type Emirate, type ScenarioKey } from './engine';
 import {
   CYCLES, DEFAULT_CONFIG, EMIRATES, EM_FIELDS, EM_LABEL, FIELDS, MAX_LINES, NOW, lines, readConfig, writeConfig,
   type Config, type Dim, type Kind, type LineDef,
@@ -46,6 +46,63 @@ function niceTicks(lo: number, hi: number, target = 6): number[] {
   const out: number[] = [];
   for (let t = Math.floor(lo / step) * step; t <= Math.ceil(hi / step) * step + step / 2; t += step) out.push(Math.round(t));
   return out;
+}
+
+/** Legend for the scenarios: what each one assumes, year by year. */
+function ScenarioKey({
+  c, keys, years, focus, onFocus,
+}: { c: Config; keys: ScenarioKey[]; years: number; focus: string | null; onFocus: (k: string | null) => void }) {
+  const rentGrowth = c.lists.rentGrowth[0];
+  const follows = c.lists.rentFollows[0];
+  const f1 = (x: number) => `${x > 0 ? '+' : ''}${+(x * 100).toFixed(1)}`;
+  const cols = Array.from({ length: years }, (_, y) => y);
+  return (
+    <div className="skey-wrap">
+      <table className="skey">
+        <thead>
+          <tr>
+            <th className="skey-n">% per year</th>
+            {cols.map((y) => <th key={y}>{`'${String(NOW + y + 1).slice(2)}`}</th>)}
+            <th className="skey-then">then</th>
+          </tr>
+        </thead>
+        <tbody>
+          {keys.map((k) => {
+            const sc = SCENARIOS.find((x) => x.key === k)!;
+            const trend = k === 'trend';
+            const price = (y: number) => (trend ? c.lists.priceGrowth[0] : sc.path[y] ?? sc.tail);
+            const rent = (y: number) => (trend ? rentGrowth : rentGrowth + (price(y) - NEUTRAL_GROWTH) * follows);
+            const ret = trend ? c.lists.investReturn[0] : c.scenRet[k];
+            const on = focus === k;
+            const dim = focus != null && !on;
+            const color = COLORS[keys.indexOf(k) % COLORS.length];
+            return (
+              <Fragment key={k}>
+                <tr className={`skey-name${on ? ' on' : ''}${dim ? ' dim' : ''}`} onClick={() => onFocus(on ? null : k)}>
+                  <td colSpan={years + 2}>
+                    <Swatch color={color} dash="" width={2.6} /> {sc.label}
+                    <span className="skey-ret">investments earn {+(ret * 100).toFixed(2)}%/yr</span>
+                  </td>
+                </tr>
+                <tr className={dim ? 'dim' : ''} onClick={() => onFocus(on ? null : k)}>
+                  <td className="skey-n">price</td>
+                  {cols.map((y) => (
+                    <td key={y} className="b">{f1(price(y))}</td>
+                  ))}
+                  <td className="skey-then">{f1(price(99))}</td>
+                </tr>
+                <tr className={`skey-rent${dim ? ' dim' : ''}`} onClick={() => onFocus(on ? null : k)}>
+                  <td className="skey-n">rent</td>
+                  {cols.map((y) => <td key={y}>{f1(rent(y))}</td>)}
+                  <td className="skey-then">{f1(rent(99))}</td>
+                </tr>
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function Swatch({ color, dash, width }: { color: string; dash: string; width: number }) {
@@ -120,15 +177,6 @@ function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) =
     .filter((x) => x.r)
     .sort((a, b) => b.r!.advantage - a.r!.advantage);
 
-  const EncSelect = ({ label, value, field }: { label: string; value: string; field: 'colorBy' | 'styleBy' | 'widthBy' }) => (
-    <label className="enc">
-      <span>{label}</span>
-      <select value={value} onChange={(e) => setC((o) => ({ ...o, [field]: e.target.value }))}>
-        {varying.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
-      </select>
-    </label>
-  );
-
   const Key = ({ d, kind }: { d: Dim; kind: 'color' | 'style' | 'width' }) => (
     <div className="key-col">
       {d.values.map((v, i) => {
@@ -177,24 +225,21 @@ function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) =
       {varying.length > 0 && (
         <>
           <div className="encodings">
-            <div>
-              <EncSelect label="Colour shows" value={colorBy} field="colorBy" />
+            {colorBy === 'cycle' ? (
+              <ScenarioKey
+                c={c}
+                keys={dimOf('cycle')!.values as ScenarioKey[]}
+                years={Math.min(maxBuy + c.horizon, 10)}
+                focus={focus?.k === 'cycle' ? (focus.v as string) : null}
+                onFocus={(k) => setFocus(k ? { k: 'cycle', v: k } : null)}
+              />
+            ) : (
               <Key d={dimOf(colorBy)!} kind="color" />
-            </div>
-            {styleBy && (
-              <div>
-                <EncSelect label="Line style shows" value={styleBy} field="styleBy" />
-                <Key d={dimOf(styleBy)!} kind="style" />
-              </div>
             )}
-            {widthBy && (
-              <div>
-                <EncSelect label="Thickness shows" value={widthBy} field="widthBy" />
-                <Key d={dimOf(widthBy)!} kind="width" />
-              </div>
-            )}
+            {styleBy && <Key d={dimOf(styleBy)!} kind="style" />}
+            {widthBy && <Key d={dimOf(widthBy)!} kind="width" />}
           </div>
-          <p className="hint">Tap a value to show only its lines. Tap the chart to read a year below.</p>
+          <p className="hint">Tap a scenario to show only its line. Tap the chart to read a year below.</p>
         </>
       )}
 
