@@ -7,6 +7,8 @@ import type { Dim } from './config';
 export const COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
 export const DASHES = ['', '8 4', '2 4', '12 4 2 4'];
 export const SHADES = [0, 1, 2];
+// the shade option also thins the line, so same-colour pairs separate even where they overlap
+export const WIDTHS = [2.6, 1.5, 1.1];
 
 export const shade = (color: string, step: number) => (step <= 0 ? color : `oklch(from ${color} calc(l + var(--shade-step) * ${step}) c h)`);
 
@@ -17,7 +19,7 @@ export interface Encoding {
   colorOf: (key: string, v: number | string) => string | null;
   dashOf: (key: string, v: number | string) => string | null;
   shadeOf: (key: string, v: number | string) => number | null;
-  line: (combo: Record<string, number | string>) => { color: string; dash: string };
+  line: (combo: Record<string, number | string>) => { color: string; dash: string; width: number };
 }
 
 export function encoding(varying: Dim[]): Encoding {
@@ -39,7 +41,7 @@ export function encoding(varying: Dim[]): Encoding {
     line: (combo) => {
       const base = colorKey ? colorOf(colorKey, combo[colorKey]) ?? COLORS[0] : COLORS[0];
       const s = shadeKey ? shadeOf(shadeKey, combo[shadeKey]) ?? 0 : 0;
-      return { color: shade(base, s), dash: dashKey ? dashOf(dashKey, combo[dashKey]) ?? '' : '' };
+      return { color: shade(base, s), dash: dashKey ? dashOf(dashKey, combo[dashKey]) ?? '' : '', width: shadeKey ? WIDTHS[s % WIDTHS.length] : 2.25 };
     },
   };
 }

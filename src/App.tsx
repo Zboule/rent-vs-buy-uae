@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { breakEvenOf } from './engine';
-import { CYCLES, MAX_LINES, NOW, describeCount, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
+import { CYCLES, FIELD, MAX_LINES, NOW, describeCount, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
 import { encoding, type Encoding } from './encoding';
 import { Settings, Stepper, useCount } from './Settings';
-import { Sheet, Swatch, useVisualViewport } from './ui';
+import { Sheet, Swatch, fmtValue, useVisualViewport } from './ui';
 import { abbr } from './format';
 
 type SetC = (f: (o: Config) => Config) => void;
@@ -112,8 +112,10 @@ const compact = (a: number) =>
   a >= 1e6 ? `${+(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${Math.round(a / 1e3)}k` : String(Math.round(a));
 const signed = (v: number) => (Math.round(v) === 0 ? '0' : `${v > 0 ? '+' : '−'}${compact(Math.abs(v))}`);
 const shortScenario = (key: string) => CYCLES.find((x) => x.key === key)?.label.split(':')[0] ?? key;
+// even shorter, for the phone matrix
+const tinyScenario = (key: string) => (key === 'chaos' ? 'Chaos' : key === 'trend' ? 'Trend' : shortScenario(key));
 
-interface Styled extends LineDef { color: string; dash: string }
+interface Styled extends LineDef { color: string; dash: string; width: number }
 
 const CHART_H = 290;
 const PLOT_TOP = 10;
@@ -236,7 +238,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
           </button>
         ))}
         <button role="radio" aria-checked={isCustomHz} className={isCustomHz ? 'on' : ''} onClick={() => setCustomHz(true)} aria-label="Custom number of years">
-          {isCustomHz ? `${c.horizon}y` : 'Other'}
+          {isCustomHz ? `${c.horizon}y` : 'Custom'}
         </button>
       </div>
       <Sheet open={customHz} onClose={() => setCustomHz(false)} title="Years to show" subtitle="How far ahead the graph goes after buying.">
@@ -271,7 +273,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                   key={l.id}
                   dataKey={l.id}
                   stroke={l.color}
-                  strokeWidth={hi ? 3.5 : 2.25}
+                  strokeWidth={hi ? Math.max(3.5, l.width + 1) : l.width}
                   strokeDasharray={l.dash || undefined}
                   strokeOpacity={op}
                   dot={(p: { cx?: number; cy?: number; payload?: { year: number }; index?: number }) =>
@@ -314,7 +316,9 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                 {(() => {
                   // group columns by the line-style option (e.g. down payment) when the columns also differ by something else
                   const dk = enc.dashKey;
-                  const leafTokens = (l: Styled) => nameOf(l, true).filter((t) => !dk || t !== l.parts[dk]);
+                  const sample0 = cols.reduce((best, x) => (Object.keys(x.sample.parts).length > Object.keys(best.sample.parts).length ? x : best), cols[0]).sample;
+                  const leafKeys = Object.keys(sample0.parts).filter((k) => k !== 'cycle' && k !== dk);
+                  const leafTokens = (l: Styled) => leafKeys.filter((k) => l.parts[k]).map((k) => (FIELD[k] ? fmtValue(FIELD[k], l.combo[k] as number) : l.parts[k]));
                   const grouped = !!dk && cols.some(({ sample }) => leafTokens(sample).length > 0);
                   const spans: { label: string; n: number }[] = [];
                   if (grouped)
@@ -332,15 +336,16 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                         </tr>
                       )}
                       <tr>
-                        <th className="mx-corner">Scenario</th>
+                        <th className="mx-corner">{grouped && leafKeys.length ? leafKeys.map((k) => FIELD[k]?.noun?.replace(/s$/, '') ?? k).join(' · ') : 'Scenario'}</th>
                         {cols.map(({ key, sample }) => {
                           const glyph = enc.line({ ...sample.combo, cycle: '__none' });
-                          const color = enc.shadeKey ? glyph.color.replace(/var\(--s\d\)/, 'var(--glyph)') : 'var(--glyph)';
-                          const label = grouped ? leafTokens(sample).join(' · ') || (sample.combo.downPct as number) >= 1 ? leafTokens(sample).join(' · ') || 'no loan' : leafTokens(sample).join(' · ') || '' : nameOf(sample, true).join(' · ') || 'All';
+                          const color = glyph.color.replace(/var\(--s\d\)/, 'var(--glyph)');
+                          const leaf = leafTokens(sample).join(' · ');
+                          const label = grouped ? leaf || ((sample.combo.downPct as number) >= 1 ? 'no loan' : '') : nameOf(sample, true).join(' · ') || 'All';
                           return (
                             <th key={key}>
                               <span className="mx-leaf">
-                                <Swatch color={color} dash={glyph.dash} w={18} width={3} />
+                                <Swatch color={color} dash={glyph.dash} w={26} width={glyph.width + 0.5} />
                                 <span>{label}</span>
                               </span>
                             </th>
@@ -362,7 +367,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                         aria-label={`Show only ${shortScenario(sc.key)}`}
                       >
                         <span className="dot" style={{ background: enc.colorOf('cycle', sc.key) ?? 'var(--label3)' }} />
-                        {shortScenario(sc.key)}
+                        {tinyScenario(sc.key)}
                       </button>
                     </th>
                     {cols.map(({ key }) => {
@@ -376,7 +381,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                         <td key={key}>
                           <button className={hi ? 'mx-cell hi' : active ? 'mx-cell dim' : 'mx-cell'} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
                             <span className={even ? 'amt' : a >= 0 ? 'amt buy' : 'amt rent'}>{even ? '≈0' : signed(a)}</span>
-                            <span className="mx-be">{be != null ? `wins after ${be}y` : `not in ${l.rows.length}y`}</span>
+                            <span className="mx-be">{be != null ? `from ${be}y` : ' '}</span>
                           </button>
                         </td>
                       );
@@ -385,7 +390,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                 ))}
               </tbody>
             </table>
-            <p className="mx-foot">Positive: buying then selling cost less than renting. Tap a value to find its line; tap a scenario to show only it.</p>
+            <p className="mx-foot">Positive: buying then selling cost less than renting. “From 3y”: buying wins if you keep the home at least 3 years. Tap a value to find its line, a scenario to show only it.</p>
           </div>
         ) : (
           <ul className="ro-list">
@@ -397,7 +402,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
               return (
                 <li key={l.id} className="ro-li">
                   <button className={hi ? 'ro hi' : active ? 'ro dim' : 'ro'} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
-                    <Swatch color={l.color} dash={l.dash} w={22} width={3} />
+                    <Swatch color={l.color} dash={l.dash} w={22} width={l.width + 0.5} />
                     <span className="ro-mid">
                       <span className="ro-name">{tokens[0] ?? 'Your assumptions'}</span>
                       <span className="ro-sub">

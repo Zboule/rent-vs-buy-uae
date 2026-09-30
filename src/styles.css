@@ -375,3 +375,19 @@ input { font: inherit; color: inherit; }
 @media (min-width: 1024px) { .mx { max-width: 640px; } }
 .count[aria-expanded='true'] .count-chev { transform: rotate(90deg); }
 .count-chev { transition: transform 0.2s; }
+
+/* ---------------------------------------------------------------- round 6 */
+.mx-leaf { flex-direction: column; align-items: flex-end !important; gap: 3px !important; white-space: nowrap; font-size: 12px; }
+.mx-scen { white-space: nowrap; max-width: none; font-size: 14px; }
+.mx .mx-corner { font-size: 11px; vertical-align: bottom; }
+.count { position: relative; }
+.count::after { content: ''; position: absolute; inset: -8px 0; }
+.seg-hz button:last-child { font-size: 13px; }
+@media (max-width: 430px) {
+  .mx thead th { min-width: 0; padding: 4px 4px 8px; }
+  .mx-cell { padding: 4px 4px; }
+  .mx-cell .amt { font-size: 14px; }
+  .mx-scen { font-size: 13px; gap: 6px; padding-right: 4px; }
+  .mx .mx-corner { font-size: 10px; }
+}
+.mx-be { min-height: 13px; }

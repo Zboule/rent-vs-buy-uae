@@ -5,7 +5,7 @@ import {
   type Config, type FieldDef, type Kind, type LineCount,
 } from './config';
 import type { Encoding } from './encoding';
-import { COLORS, shade } from './encoding';
+import { COLORS, WIDTHS, shade } from './encoding';
 import { Chevron, PlusIcon, Sheet, Swatch, fmtValue, parseOne, toInput } from './ui';
 
 type SetC = (f: (o: Config) => Config) => void;
@@ -69,7 +69,7 @@ function Chip({ label, color, dash, shadePct, onClick, onRemove }: {
       <button className="vchip-b" onClick={onClick}>
         {color && <span className="dot" style={{ background: color }} />}
         {dash != null && !color && <Swatch color="var(--label)" dash={dash} w={18} width={2} />}
-        {shadePct != null && !color && dash == null && <Swatch color={shade('var(--glyph)', shadePct)} w={18} width={3.5} />}
+        {shadePct != null && !color && dash == null && <Swatch color={shade('var(--glyph)', shadePct)} w={18} width={WIDTHS[shadePct % WIDTHS.length] + 0.5} />}
         {label}
       </button>
       {onRemove && (
@@ -148,6 +148,7 @@ function ValueSheet({ s, c, setC, onClose }: { s: SheetState | null; c: Config; 
     if (v == null) return;
     setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: [...new Set(nextList)] } }));
     onClose();
+    if (s.mode === 'add') setTimeout(() => document.querySelector('.chart-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
   };
   const remove = () => {
     setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: values.filter((x) => x !== s.value) } }));
