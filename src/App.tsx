@@ -1,684 +1,321 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts';
+import { breakEvenOf, type Emirate, type ScenarioKey } from './engine';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from 'recharts';
-import {
-  DEFAULTS, PRESETS, SCENARIOS, VAT, breakEvenOf, marketPath, simulateAll, simulateBuy, type BuyResult, type Emirate, type Params, type SellRow,
-} from './engine';
-import { DEFAULT_CMP, initialCustom, readHash, writeHash, type AppState, type Compare, type Financing } from './state';
-import { abbr, aed, pct } from './format';
+  CYCLES, DEFAULT_CONFIG, EMIRATES, EM_FIELDS, EM_LABEL, FIELDS, MAX_LINES, NOW, lines, readConfig, writeConfig,
+  type Config, type Dim, type Kind, type LineDef,
+} from './config';
+import { abbr } from './format';
 
-const NOW = new Date().getFullYear();
-const BUY = 'var(--buy)';
-const RENT = 'var(--rent)';
+// categorical slots in fixed order (validated palette), then line styles and widths
+const COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
+const DASHES = ['', '9 4', '2 3', '12 3 2 3', '5 5', '1 3', '16 6', '6 2 2 2 2 2'];
+const WIDTHS = [2.6, 1.2, 1.9];
 
 export default function App() {
-  const [s, setS] = useState<AppState>(readHash);
-  useEffect(() => writeHash(s), [s]);
-
-  const { p, custom } = s;
-  const set = (patch: Partial<Params>) => setS((o) => ({ ...o, p: { ...o.p, ...patch } }));
-  const all = useMemo(() => simulateAll(p, custom), [p, custom]);
-  const X = Math.min(s.buyYear, p.maxBuyYear);
-  const sel = all[X];
-  const val = (r: SellRow) => (s.real ? r.advantageReal : r.advantage);
+  const [c, setC] = useState<Config>(readConfig);
+  useEffect(() => writeConfig(c), [c]);
+  const res = useMemo(() => lines(c), [c]);
 
   return (
     <div className="page">
       <header className="hero">
         <h1>Rent or buy, UAE</h1>
-        <p className="tagline">If I buy in year X and sell in year Y, am I better off than if I had kept renting?</p>
         <p className="intro">
-          <b>Cost of renting</b> = rent and fees paid, minus what your cash earned while invested (the down payment and
-          buying fees you did not spend, plus each month's saving when renting is cheaper).{' '}
-          <b>Cost of buying</b> = down payment, every fee, mortgage and running costs, minus what you get back when you
-          sell (after the agent and the loan payoff). Every chart shows cost of renting minus cost of buying:{' '}
-          <b className="c-buy">blue</b> means buying then selling was cheaper, <b className="c-rent">orange</b> means
-          renting was.
+          One line per combination of the values you enter. Each line shows, for every year you could sell,{' '}
+          <b>the cost of renting minus the cost of buying then selling</b>. Every month the mortgage payment plus owning
+          costs is compared with the rent: whichever side pays less invests the difference at that line's return, and
+          the renter invests the down payment and fees from day one. Above zero (blue area), buying was cheaper. Below
+          zero (orange area), renting was.
         </p>
       </header>
-
       <div className="layout">
-        <aside className="inputs">
-          <Inputs s={s} setS={setS} set={set} />
-        </aside>
-
         <main className="results">
-          <BuyYearPicker all={all} X={X} onPick={(x) => setS((o) => ({ ...o, buyYear: x }))} />
-          <div className="measure-bar">
-            <span className="muted small">Cost of renting minus cost of buying, if you sell in each year.</span>
-            <label className="toggle">
-              <input type="checkbox" checked={s.real} onChange={(e) => setS((o) => ({ ...o, real: e.target.checked }))} />
-              today's money
-            </label>
-          </div>
-          <Headline r={sel} val={val} />
-
-          <section className="card">
-            <h2>Presets compared: buy in {NOW + X}, sell over the years</h2>
-            <p className="sub">
-              Each line is one combination of the ticked presets, on top of your inputs.{' '}
-              Cost of renting minus cost of buying if you sell that year. Above zero, buying was cheaper.
-            </p>
-            <PresetCompare
-              p={p}
-              custom={custom}
-              X={X}
-              val={val}
-              cmp={s.cmp}
-              setCmp={(cmp) => setS((o) => ({ ...o, cmp }))}
-            />
-          </section>
-
-          <section className="card">
-            <h2>Buy in {NOW + X}, sell in year…</h2>
-            <p className="sub">Cost of renting minus cost of buying, by the year you sell.</p>
-            <AdvantageChart r={sel} val={val} />
-          </section>
-
-          <section className="card">
-            <h2>Every buy year × every holding period</h2>
-            <p className="sub">
-              Rows: the year you buy. Columns: how many years you keep it. Tap a row to see it in detail.
-            </p>
-            <Heatmap all={all} X={X} val={val} onPick={(x) => setS((o) => ({ ...o, buyYear: x }))} />
-          </section>
-
-          <section className="card">
-            <h2>Year by year, buying in {NOW + X}</h2>
-            <p className="sub">Cumulative AED at the time of sale. How each side's cost is built{s.real ? ", last column in today's money" : ''}.</p>
-            <SellTable r={sel} val={val} />
-          </section>
-
-          <section className="card">
-            <h2>What buying in {NOW + X} costs upfront</h2>
-            <CostBreakdown r={sel} />
-          </section>
-
-          <section className="card">
-            <h2>Market path</h2>
-            <p className="sub">Price and rent, indexed to 100 today. This is where the buy year starts to matter.</p>
-            <MarketChart p={p} custom={custom} />
-          </section>
-
-          <Notes />
+          <Graph c={c} setC={setC} res={res} />
         </main>
+        <aside className="inputs">
+          <ConfigForm c={c} setC={setC} total={res.total} />
+        </aside>
       </div>
       <footer className="foot">
-        Not financial advice. Defaults are 2026 estimates and every one of them is editable.{' '}
-        <a href="https://github.com/Zboule/rent-vs-buy-uae">Source and method</a>
+        Not financial advice. 2026 defaults, all editable. <a href="https://github.com/Zboule/rent-vs-buy-uae">Source and method</a>
       </footer>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ results */
+/* ------------------------------------------------------------------ graph */
 
-function BuyYearPicker({ all, X, onPick }: { all: BuyResult[]; X: number; onPick: (x: number) => void }) {
-  return (
-    <div className="picker" role="tablist" aria-label="Buy year">
-      <span className="picker-label">Buy in</span>
-      <div className="chips">
-        {all.map((b) => (
-          <button key={b.buyYear} className={b.buyYear === X ? 'chip on' : 'chip'} onClick={() => onPick(b.buyYear)}>
-            {b.buyYear === 0 ? `Now (${NOW})` : NOW + b.buyYear}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Headline({ r, val }: { r: BuyResult; val: (x: SellRow) => number }) {
-  const pick = (h: number) => r.rows.find((x) => x.held === h);
-  const v = (x?: SellRow) => (x ? val(x) : 0);
-  const be = breakEvenOf(r.rows, val);
-  const marks = [1, 3, 5, 10, 20].filter((h) => pick(h));
-  return (
-    <section className="headline">
-      <div className="verdict">
-        {be == null ? (
-          <>Buying in {NOW + r.buyYear} <b className="c-rent">never catches up</b> with renting within {r.rows.length} years.</>
-        ) : be === 1 ? (
-          <>Buying in {NOW + r.buyYear} <b className="c-buy">wins from the first year</b>.</>
-        ) : (
-          <>
-            Buying in {NOW + r.buyYear} beats renting if you keep it <b className="c-buy">{be} years or more</b>{' '}
-            (sell in {NOW + r.buyYear + be} or later).
-          </>
-        )}
-      </div>
-      <div className="tiles">
-        {marks.map((h) => {
-          const a = v(pick(h));
-          return (
-            <div className="tile" key={h}>
-              <div className="tile-k">sell after {h}y</div>
-              <div className={a >= 0 ? 'tile-v c-buy' : 'tile-v c-rent'}>{a >= 0 ? '+' : ''}{abbr(a)}</div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="facts">
-        Price {aed(r.price)} · rent {aed(r.rent)}/yr · price-to-rent {(r.price / r.rent).toFixed(1)}×
-        {r.costs.loan > 0 && <> · mortgage {aed(r.monthlyPayment)}/mo</>}
-      </div>
-    </section>
-  );
-}
-
-// categorical slots, fixed order (validated palette): one hue per price trend × market cycle
-const SLOTS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
-// line styles for the other dimensions (investment return × emirate × financing), in fixed order
-const DASHES = ['', '9 4', '2 3', '12 3 2 3', '5 5', '1 3', '16 6', '6 2 2 2 2 2'];
-const EM_LABEL: Record<Emirate, string> = { DXB: 'Dubai', AUH: 'Abu Dhabi' };
-const FIN_LABEL: Record<Financing, string> = { loan: 'mortgage', cash: 'cash buyer' };
-// optimistic -> pessimistic
-const TRENDS = [0.07, 0.05, 0.03, 0.01, -0.02];
-const TREND_NAME: Record<string, string> = { '0.07': 'Hot', '0.05': 'Strong', '0.03': 'Moderate', '0.01': 'Flat', '-0.02': 'Falling' };
-const RETURNS = [0.04, 0.06, 0.08, 0.1];
-const signed = (x: number) => `${x >= 0 ? '+' : ''}${pct(x)}`;
-
-/** Round tick values (1/2/2.5/5 × 10^n) covering lo..hi, always including 0. */
 function niceTicks(lo: number, hi: number, target = 6): number[] {
   const raw = Math.max(1, hi - lo) / target;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => x >= raw)!;
   const out: number[] = [];
-  for (let t = Math.floor(lo / step) * step; t <= Math.ceil(hi / step) * step + step / 2; t += step) out.push(t);
+  for (let t = Math.floor(lo / step) * step; t <= Math.ceil(hi / step) * step + step / 2; t += step) out.push(Math.round(t));
   return out;
 }
 
-interface Series {
-  key: string;
-  name: string;
-  color: string;
-  colorKey: string;
-  colorName: string;
-  dash: string;
-  styleKey: string;
-  styleName: string;
-  mine: boolean;
-  rows: SellRow[];
-}
-
-function DashSwatch({ dash, color = 'currentColor', width = 2 }: { dash: string; color?: string; width?: number }) {
+function Swatch({ color, dash, width }: { color: string; dash: string; width: number }) {
   return (
-    <svg width="30" height="8" className="dashsw">
-      <line x1="0" y1="4" x2="30" y2="4" stroke={color} strokeWidth={width} strokeDasharray={dash || undefined} />
+    <svg width="28" height="10" className="swatch">
+      <line x1="0" y1="5" x2="28" y2="5" stroke={color} strokeWidth={width + 0.4} strokeDasharray={dash || undefined} />
     </svg>
   );
 }
 
-function PresetCompare({
-  p, custom, X, val, cmp, setCmp,
-}: { p: Params; custom: number[]; X: number; val: (r: SellRow) => number; cmp: Compare; setCmp: (c: Compare) => void }) {
-  const toggle = <K extends keyof Compare>(k: K, v: string) => {
-    const cur = cmp[k] as string[];
-    setCmp({ ...cmp, [k]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] });
-  };
-  const [focus, setFocus] = useState<string | null>(null);
-  const scenarios = SCENARIOS.filter((x) => x.key !== 'custom' || p.scenario === 'custom');
-  const trendKeys = ['in', ...TRENDS.map(String)].filter((k) => cmp.g.includes(k));
-  const scKeys = scenarios.map((x) => x.key).filter((k) => cmp.sc.includes(k));
-  const retKeys = ['in', ...RETURNS.map(String)].filter((k) => cmp.r.includes(k));
-  const emKeys = (['DXB', 'AUH'] as Emirate[]).filter((e) => cmp.em.includes(e));
-  const finKeys = (['loan', 'cash'] as Financing[]).filter((f) => cmp.fin.includes(f));
-  const trendVal = (k: string) => (k === 'in' ? p.priceGrowth : Number(k));
-  const retVal = (k: string) => (k === 'in' ? p.investReturn : Number(k));
-  const trendLabel = (k: string) => (k === 'in' ? `Your input, ${signed(p.priceGrowth)}/yr` : `${TREND_NAME[k]}, ${signed(Number(k))}/yr`);
-  const retLabel = (k: string) => `invest ${k === 'in' ? pct(p.investReturn) : pct(Number(k))}`;
+interface Styled extends LineDef { color: string; dash: string; width: number }
 
-  // colour = price trend × market cycle; line style = investment return × emirate × financing
-  const colorCombos = trendKeys.flatMap((g) => scKeys.map((sc) => ({ g, sc })));
-  const styleCombos = retKeys.flatMap((r) => emKeys.flatMap((em) => finKeys.map((fin) => ({ r, em, fin }))));
-  const tooMany = colorCombos.length > SLOTS.length || styleCombos.length > DASHES.length;
+function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) => void; res: ReturnType<typeof lines> }) {
+  const { varying } = res;
+  const vKeys = varying.map((d) => d.key);
+  // which dimension drives colour / line style / thickness
+  const pick = (want: string, taken: string[]) =>
+    vKeys.includes(want) && !taken.includes(want) ? want : vKeys.find((k) => !taken.includes(k)) ?? '';
+  const colorBy = pick(c.colorBy, []);
+  const styleBy = pick(c.styleBy, [colorBy]);
+  const widthBy = pick(c.widthBy, [colorBy, styleBy]);
+  const dimOf = (k: string) => varying.find((d) => d.key === k);
+  const idx = (k: string, v: number | string) => (dimOf(k)?.values ?? []).indexOf(v as never);
 
-  const series = useMemo<Series[]>(() => {
-    const out: Series[] = [];
-    colorCombos.slice(0, SLOTS.length).forEach(({ g, sc }, ci) => {
-      const colorName = [
-        trendKeys.length > 1 || g !== 'in' ? trendLabel(g) : '',
-        scKeys.length > 1 || sc !== 'steady' ? SCENARIOS.find((x) => x.key === sc)!.label : '',
-      ].filter(Boolean).join(' · ') || 'Your market inputs';
-      styleCombos.slice(0, DASHES.length).forEach(({ r, em, fin }, si) => {
-        const q: Params = {
-          ...p,
-          ...(em !== p.emirate ? { ...PRESETS[em], emirate: em } : {}),
-          scenario: sc,
-          priceGrowth: trendVal(g),
-          investReturn: retVal(r),
-          downPct: fin === 'cash' ? 1 : p.downPct,
-        };
-        const styleName = [
-          retKeys.length > 1 || r !== 'in' ? retLabel(r) : '',
-          emKeys.length > 1 || em !== p.emirate ? EM_LABEL[em] : '',
-          finKeys.length > 1 || fin !== 'loan' ? FIN_LABEL[fin] : '',
-        ].filter(Boolean).join(' · ') || 'your inputs';
-        out.push({
-          key: `${g}|${sc}|${r}|${em}|${fin}`,
-          name: `${colorName} · ${styleName}`,
-          color: SLOTS[ci],
-          colorKey: `${g}|${sc}`,
-          colorName,
-          dash: DASHES[si],
-          styleKey: `${r}|${em}|${fin}`,
-          styleName,
-          mine: g === 'in' && sc === p.scenario && r === 'in' && em === p.emirate && (fin === 'cash') === (p.downPct >= 1),
-          rows: simulateBuy(q, X, custom).rows,
-        });
-      });
-    });
-    return out;
-  }, [p, custom, X, cmp]);
+  const styled: Styled[] = res.lines.map((l) => ({
+    ...l,
+    color: colorBy ? COLORS[idx(colorBy, l.combo[colorBy]) % COLORS.length] : COLORS[0],
+    dash: styleBy ? DASHES[idx(styleBy, l.combo[styleBy]) % DASHES.length] : '',
+    width: widthBy ? WIDTHS[idx(widthBy, l.combo[widthBy]) % WIDTHS.length] : 2.2,
+  }));
 
-  const colors = [...new Map(series.map((s) => [s.colorKey, s])).values()];
-  const styles = [...new Map(series.map((s) => [s.styleKey, s])).values()];
-  const v = val;
-  const all = series.flatMap((s) => s.rows.map(v));
-  const lo = Math.min(0, ...all);
-  const ticks = niceTicks(lo, Math.max(0, ...all)).filter((t) => t >= lo || t === 0);
-  const yDomain = [Math.min(lo * 1.1, ticks[0]), ticks[ticks.length - 1]];
-  const breakEven = (rows: SellRow[]) => breakEvenOf(rows, v);
-  const dim = (s: Series) => focus != null && s.colorKey !== focus && s.styleKey !== focus;
+  const [focus, setFocus] = useState<{ k: string; v: number | string } | null>(null);
+  const on = (l: Styled) => !focus || l.combo[focus.k] === focus.v;
 
-  const data = (series[0]?.rows ?? []).map((row, i) => {
-    const d: Record<string, number> = { year: NOW + row.sellYear, held: row.held };
-    for (const s of series) d[s.key] = v(s.rows[i]);
+  const buys = c.lists.buyYear.length ? c.lists.buyYear : [0];
+  const minBuy = Math.min(...buys);
+  const maxBuy = Math.max(...buys);
+  const years: number[] = [];
+  for (let y = minBuy + 1; y <= maxBuy + c.horizon; y++) years.push(NOW + y);
+  const data = years.map((year) => {
+    const d: Record<string, number | null> = { year };
+    for (const l of styled) {
+      const r = l.rows.find((x) => NOW + x.sellYear === year);
+      d[l.id] = r ? r.advantage : null;
+    }
     return d;
   });
 
-  const Box = ({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) => (
-    <label className={on ? 'cbx on' : 'cbx'}>
-      <input type="checkbox" checked={on} onChange={onClick} />
-      {label}
+  const [active, setActive] = useState<number | null>(null);
+  const activeYear = active != null && years.includes(active) ? active : years[Math.min(4, years.length - 1)];
+
+  if (!styled.length) {
+    return (
+      <section className="card">
+        <p className="muted">Enter at least one value in every field, and tick at least one emirate and one market cycle.</p>
+      </section>
+    );
+  }
+
+  const vals = styled.filter(on).flatMap((l) => l.rows.map((r) => r.advantage));
+  const ticks = niceTicks(Math.min(0, ...vals), Math.max(0, ...vals));
+  const y0 = ticks[0];
+  const y1 = ticks[ticks.length - 1];
+
+  const readout = styled
+    .filter(on)
+    .map((l) => ({ l, r: l.rows.find((x) => NOW + x.sellYear === activeYear) }))
+    .filter((x) => x.r)
+    .sort((a, b) => b.r!.advantage - a.r!.advantage);
+
+  const EncSelect = ({ label, value, field }: { label: string; value: string; field: 'colorBy' | 'styleBy' | 'widthBy' }) => (
+    <label className="enc">
+      <span>{label}</span>
+      <select value={value} onChange={(e) => setC((o) => ({ ...o, [field]: e.target.value }))}>
+        {varying.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+      </select>
     </label>
   );
 
+  const Key = ({ d, kind }: { d: Dim; kind: 'color' | 'style' | 'width' }) => (
+    <div className="key-col">
+      {d.values.map((v, i) => {
+        const f = !!focus && focus.k === d.key && focus.v === v;
+        return (
+          <button key={String(v)} className={f ? 'key on' : 'key'} onClick={() => setFocus(f ? null : { k: d.key, v })}>
+            <Swatch
+              color={kind === 'color' ? COLORS[i % COLORS.length] : 'var(--text2)'}
+              dash={kind === 'style' ? DASHES[i % DASHES.length] : ''}
+              width={kind === 'width' ? WIDTHS[i % WIDTHS.length] : 2}
+            />
+            {d.tag(v)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <>
-      <div className="cmp">
-        <div className="cmp-g">
-          <div className="cmp-h">Price trend (optimistic to pessimistic)</div>
-          {['in', ...TRENDS.map(String)].map((k) => (
-            <Box key={k} on={cmp.g.includes(k)} label={trendLabel(k)} onClick={() => toggle('g', k)} />
-          ))}
-          <div className="cmp-h">Market cycle</div>
-          {scenarios.map((x) => (
-            <Box key={x.key} on={cmp.sc.includes(x.key)} label={x.label} onClick={() => toggle('sc', x.key)} />
-          ))}
-        </div>
-        <div className="cmp-g">
-          <div className="cmp-h">Return on cash not spent on the home</div>
-          {['in', ...RETURNS.map(String)].map((k) => (
-            <Box key={k} on={cmp.r.includes(k)} label={k === 'in' ? `Your input, ${pct(p.investReturn)}/yr` : `${pct(Number(k))}/yr`} onClick={() => toggle('r', k)} />
-          ))}
-          <div className="cmp-h">Emirate fees</div>
-          {(['DXB', 'AUH'] as Emirate[]).map((e) => (
-            <Box key={e} on={cmp.em.includes(e)} label={EM_LABEL[e]} onClick={() => toggle('em', e)} />
-          ))}
-          <div className="cmp-h">Financing</div>
-          {(['loan', 'cash'] as Financing[]).map((f) => (
-            <Box key={f} on={cmp.fin.includes(f)} label={f === 'loan' ? `Mortgage (${pct(1 - Math.min(1, p.downPct))} loan)` : 'Cash buyer'} onClick={() => toggle('fin', f)} />
-          ))}
-        </div>
+    <section className="card graph">
+      <div className="graph-head">
+        <h2>
+          {styled.length} line{styled.length > 1 ? 's' : ''}
+        </h2>
+        {res.total > MAX_LINES && <span className="warn small">showing the first {MAX_LINES} of {res.total} combinations</span>}
       </div>
-      {tooMany && <p className="warn small">Showing the first 8 colours and 8 line styles; untick some boxes to see the rest.</p>}
-      {series.length === 0 ? (
-        <p className="muted">Tick at least one box in each group.</p>
-      ) : (
+
+      {varying.length > 0 && (
         <>
-          <div className="keys">
-            <div className="key-col">
-              <div className="cmp-h">Colour</div>
-              {colors.map((s) => (
-                <button key={s.colorKey} className={focus === s.colorKey ? 'key on' : 'key'} onClick={() => setFocus(focus === s.colorKey ? null : s.colorKey)}>
-                  <DashSwatch dash="" color={s.color} width={3} /> {s.colorName}
-                </button>
-              ))}
+          <div className="encodings">
+            <div>
+              <EncSelect label="Colour" value={colorBy} field="colorBy" />
+              <Key d={dimOf(colorBy)!} kind="color" />
             </div>
-            {styles.length > 1 && (
-              <div className="key-col">
-                <div className="cmp-h">Line style</div>
-                {styles.map((s) => (
-                  <button key={s.styleKey} className={focus === s.styleKey ? 'key on' : 'key'} onClick={() => setFocus(focus === s.styleKey ? null : s.styleKey)}>
-                    <DashSwatch dash={s.dash} /> {s.styleName}
-                  </button>
-                ))}
+            {styleBy && (
+              <div>
+                <EncSelect label="Line style" value={styleBy} field="styleBy" />
+                <Key d={dimOf(styleBy)!} kind="style" />
+              </div>
+            )}
+            {widthBy && (
+              <div>
+                <EncSelect label="Thickness" value={widthBy} field="widthBy" />
+                <Key d={dimOf(widthBy)!} kind="width" />
               </div>
             )}
           </div>
-          <p className="hint">Tap a colour or line style to highlight its curves.</p>
-          <div className="chart">
-            <ResponsiveContainer width="100%" height={380}>
-              <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="var(--grid)" />
-                <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={14} />
-                <YAxis domain={yDomain} ticks={ticks} tickFormatter={(x) => abbr(x)} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={56} tickLine={false} axisLine={false} />
-                <ReferenceLine y={0} stroke="var(--axis)" strokeWidth={1.5} />
-                <Tooltip
-                  cursor={{ stroke: 'var(--axis)', strokeDasharray: '3 3' }}
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload as Record<string, number>;
-                    const sorted = series.filter((s) => !dim(s)).sort((a, b) => d[b.key] - d[a.key]);
-                    return (
-                      <div className="tip">
-                        <div className="tip-t">Sell in {d.year} (held {d.held}y)</div>
-                        {sorted.map((s) => (
-                          <div key={s.key} className="tip-row">
-                            <DashSwatch dash={s.dash} color={s.color} />
-                            <span className="tip-n">{s.name}</span>
-                            <span className={d[s.key] >= 0 ? 'c-buy' : 'c-rent'}>{d[s.key] >= 0 ? '+' : ''}{abbr(d[s.key])}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  }}
-                />
-                {series.map((s) => (
-                  <Line key={s.key} dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={s.mine ? 3 : 2}
-                    strokeOpacity={dim(s) ? 0.12 : 1} strokeDasharray={s.dash || undefined} dot={false}
-                    activeDot={dim(s) ? false : { r: 4, stroke: 'var(--panel)', strokeWidth: 2 }} isAnimationActive={false} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="table-wrap">
-            <table className="grid be-table">
-              <thead>
-                <tr>
-                  <th>Break-even holding period</th>
-                  {styles.map((s) => <th key={s.styleKey}>{s.styleName}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {colors.map((c) => (
-                  <tr key={c.colorKey}>
-                    <td><span className="sw" style={{ background: c.color }} /> {c.colorName}</td>
-                    {styles.map((st) => {
-                      const s = series.find((x) => x.colorKey === c.colorKey && x.styleKey === st.styleKey)!;
-                      const b = breakEven(s.rows);
-                      return <td key={st.styleKey} className={b == null ? 'c-rent' : 'c-buy'}>{b == null ? 'never' : `${b}y`}</td>;
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p className="hint">Tap a value to show only its lines. Tap the chart to read a year below.</p>
         </>
       )}
-    </>
-  );
-}
 
-function AdvantageChart({ r, val }: { r: BuyResult; val: (x: SellRow) => number }) {
-  const data = r.rows.map((x) => ({ year: NOW + x.sellYear, held: x.held, v: val(x) }));
-  return (
-    <div className="chart">
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }} barCategoryGap={2}>
-          <CartesianGrid vertical={false} stroke="var(--grid)" />
-          <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={12} />
-          <YAxis tickFormatter={(v) => abbr(v)} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={62} tickLine={false} axisLine={false} />
-          <ReferenceLine y={0} stroke="var(--axis)" />
-          <Tooltip
-            cursor={{ fill: 'var(--hover)' }}
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              const d = payload[0].payload as (typeof data)[number];
-              return (
-                <div className="tip">
-                  <div className="tip-t">Sell in {d.year} (held {d.held}y)</div>
-                  <div className={d.v >= 0 ? 'c-buy' : 'c-rent'}>
-                    {d.v >= 0 ? 'Buying ahead by ' : 'Renting ahead by '}{aed(Math.abs(d.v))}
-                  </div>
-                </div>
-              );
-            }}
-          />
-          <Bar dataKey="v" radius={[4, 4, 4, 4]} isAnimationActive={false}>
-            {data.map((d) => <Cell key={d.year} fill={d.v >= 0 ? BUY : RENT} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-// diverging scale: rent pole (orange) <- neutral gray -> buy pole (blue)
-function cellColor(v: number, max: number): string {
-  const t = Math.max(-1, Math.min(1, v / max));
-  const a = Math.sqrt(Math.abs(t));
-  const pole = t >= 0 ? 'var(--buy)' : 'var(--rent)';
-  return `color-mix(in oklab, ${pole} ${Math.round(a * 100)}%, var(--mid))`;
-}
-
-function Heatmap({ all, X, val, onPick }: { all: BuyResult[]; X: number; val: (x: SellRow) => number; onPick: (x: number) => void }) {
-  const [hover, setHover] = useState<{ b: number; h: number } | null>(null);
-  const max = Math.max(1, ...all.flatMap((b) => b.rows.map((x) => Math.abs(val(x)))));
-  const holds = all[0].rows.map((x) => x.held);
-  const hv = hover ? all[hover.b].rows[hover.h - 1] : null;
-  return (
-    <>
-      <div className="heat-read">
-        {hv ? (
-          <>
-            Buy {NOW + hover!.b}, sell {NOW + hv.sellYear} ({hv.held}y):{' '}
-            <b className={val(hv) >= 0 ? 'c-buy' : 'c-rent'}>
-              {val(hv) >= 0 ? 'buying ahead by ' : 'renting ahead by '}{aed(Math.abs(val(hv)))}
-            </b>
-          </>
-        ) : (
-          <span className="muted">Hover or tap a cell for its value.</span>
-        )}
-      </div>
-      <div className="heat-wrap">
-        <table className="heat" onMouseLeave={() => setHover(null)}>
-          <thead>
-            <tr>
-              <th className="rowh">buy \ held</th>
-              {holds.map((h) => <th key={h}>{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {all.map((b) => (
-              <tr key={b.buyYear} className={b.buyYear === X ? 'sel' : ''} onClick={() => onPick(b.buyYear)}>
-                <th className="rowh">{NOW + b.buyYear}</th>
-                {b.rows.map((x) => (
-                  <td
-                    key={x.held}
-                    style={{ background: cellColor(val(x), max) }}
-                    className={breakEvenOf(b.rows, val) === x.held ? 'be' : ''}
-                    onMouseEnter={() => setHover({ b: b.buyYear, h: x.held })}
-                    onTouchStart={() => setHover({ b: b.buyYear, h: x.held })}
-                  />
-                ))}
-              </tr>
+      <div className="chart">
+        <ResponsiveContainer width="100%" height={420}>
+          <LineChart
+            data={data}
+            margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+            onMouseMove={(e) => e?.activeLabel != null && setActive(Number(e.activeLabel))}
+            onClick={(e) => e?.activeLabel != null && setActive(Number(e.activeLabel))}
+          >
+            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.06} ifOverflow="hidden" />
+            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.09} ifOverflow="hidden" />
+            <CartesianGrid vertical={false} stroke="var(--grid)" />
+            <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={12} />
+            <YAxis
+              domain={[y0, y1]}
+              ticks={ticks}
+              tickFormatter={(x) => abbr(x)}
+              tick={{ fill: 'var(--muted)', fontSize: 11 }}
+              width={56}
+              tickLine={false}
+              axisLine={false}
+              allowDataOverflow
+            />
+            <ReferenceLine y={0} stroke="var(--axis)" strokeWidth={1.5} />
+            <ReferenceLine x={activeYear} stroke="var(--axis)" strokeDasharray="3 3" />
+            {styled.map((l) => (
+              <Line
+                key={l.id}
+                dataKey={l.id}
+                stroke={l.color}
+                strokeWidth={l.width}
+                strokeDasharray={l.dash || undefined}
+                strokeOpacity={on(l) ? 1 : 0.07}
+                dot={false}
+                activeDot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
             ))}
-          </tbody>
-        </table>
+          </LineChart>
+        </ResponsiveContainer>
+        <div className="zone-labels">
+          <span className="c-buy">▲ buying cheaper</span>
+          <span className="c-rent">▼ renting cheaper</span>
+        </div>
       </div>
-      <div className="heat-legend">
-        <span className="c-rent">renting ahead {abbr(max)}</span>
-        <span className="bar" />
-        <span className="c-buy">buying ahead {abbr(max)}</span>
-        <span className="muted">· outlined cell = break-even</span>
+
+      <div className="readout">
+        <div className="readout-h">
+          <button className="step" onClick={() => setActive(Math.max(years[0], activeYear - 1))} aria-label="Previous year">‹</button>
+          <b>Sell in {activeYear}</b>
+          <button className="step" onClick={() => setActive(Math.min(years[years.length - 1], activeYear + 1))} aria-label="Next year">›</button>
+        </div>
+        <div className="ro ro-head muted">
+          <span />
+          <span className="ro-n">line</span>
+          <span className="ro-v">rent − buy</span>
+          <span className="ro-be">buy cheaper from</span>
+          <span className="ro-p">mortgage vs rent, yr 1</span>
+        </div>
+        <div className="readout-list">
+          {readout.map(({ l, r }) => {
+            const be = breakEvenOf(l.rows, (x) => x.advantage);
+            return (
+              <div className="ro" key={l.id}>
+                <Swatch color={l.color} dash={l.dash} width={l.width} />
+                <span className="ro-n">{l.name}</span>
+                <span className={r!.advantage >= 0 ? 'c-buy ro-v' : 'c-rent ro-v'}>
+                  {r!.advantage >= 0 ? '+' : ''}
+                  {abbr(r!.advantage)}
+                </span>
+                <span className="ro-be muted">{be == null ? 'never' : `${be}y held`}</span>
+                <span className="ro-p muted">{l.paymentYear > 0 ? `${abbr(l.paymentYear)} vs ${abbr(l.rentYear)}` : `cash vs ${abbr(l.rentYear)}`}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </>
-  );
-}
-
-function SellTable({ r, val }: { r: BuyResult; val: (x: SellRow) => number }) {
-  const be = breakEvenOf(r.rows, val);
-  const sign = (n: number) => `${n >= 0 ? '+' : ''}${abbr(n)}`;
-  return (
-    <div className="table-wrap">
-      <table className="grid">
-        <thead>
-          <tr>
-            <th rowSpan={2}>Sell</th><th rowSpan={2}>Held</th>
-            <th colSpan={3} className="grp">Renting</th>
-            <th colSpan={5} className="grp">Buying then selling</th>
-            <th rowSpan={2}>Difference</th>
-          </tr>
-          <tr>
-            <th>Rent paid</th><th>Cash earned</th><th>Cost</th>
-            <th>Paid out</th><th>Sale price</th><th>Sell costs + loan</th><th>Cash earned</th><th>Cost</th>
-          </tr>
-        </thead>
-        <tbody>
-          {r.rows.map((x) => (
-            <tr key={x.held} className={be === x.held ? 'be' : ''}>
-              <td>{NOW + x.sellYear}</td>
-              <td>{x.held}y</td>
-              <td>{abbr(x.rentPaid)}</td>
-              <td>−{abbr(x.renterGains)}</td>
-              <td className="b">{abbr(x.rentNet)}</td>
-              <td>{abbr(x.buyPaid)}</td>
-              <td>−{abbr(x.salePrice)}</td>
-              <td>+{abbr(x.sellCosts + x.loanLeft)}</td>
-              <td>−{abbr(x.ownerGains)}</td>
-              <td className="b">{abbr(x.buyNet)}</td>
-              <td className={val(x) >= 0 ? 'c-buy b' : 'c-rent b'}>{sign(val(x))}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CostBreakdown({ r }: { r: BuyResult }) {
-  const c = r.costs;
-  const rows: [string, number][] = [
-    ['Down payment', c.down],
-    ['Transfer fee (DLD / DMT)', c.transfer],
-    ['Agent commission incl. VAT', c.agent],
-    ['Registration & trustee', c.registration],
-    ['Mortgage: registration, bank fee, valuation', c.mortgageFees],
-    ['Moving in', c.moveIn],
-  ];
-  return (
-    <div className="costs">
-      {rows.filter(([, v]) => v > 0).map(([k, v]) => (
-        <div className="cost" key={k}><span>{k}</span><span>{aed(v)}</span></div>
-      ))}
-      <div className="cost total"><span>Cash needed at purchase</span><span>{aed(c.upfront)}</span></div>
-      <div className="cost muted"><span>of which sunk costs (not equity)</span><span>{aed(c.total)} · {pct(c.total / r.price)} of price</span></div>
-      {c.loan > 0 && <div className="cost muted"><span>Loan</span><span>{aed(c.loan)}</span></div>}
-    </div>
-  );
-}
-
-function MarketChart({ p, custom }: { p: Params; custom: number[] }) {
-  const n = p.maxBuyYear + p.maxHold;
-  const m = marketPath(p, custom, n);
-  let pi = 100, ri = 100;
-  const data = [{ year: NOW, price: 100, rent: 100 }];
-  for (let y = 0; y < n; y++) {
-    pi *= 1 + m.price[y];
-    ri *= 1 + m.rent[y];
-    data.push({ year: NOW + y + 1, price: +pi.toFixed(1), rent: +ri.toFixed(1) });
-  }
-  return (
-    <div className="chart">
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid vertical={false} stroke="var(--grid)" />
-          <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={16} />
-          <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} width={40} tickLine={false} axisLine={false} />
-          <Tooltip
-            content={({ active, payload, label }) =>
-              active && payload?.length ? (
-                <div className="tip">
-                  <div className="tip-t">{label}</div>
-                  <div>Price index {payload[0].payload.price}</div>
-                  <div>Rent index {payload[0].payload.rent}</div>
-                </div>
-              ) : null
-            }
-          />
-          <Legend wrapperStyle={{ fontSize: 12, color: 'var(--muted)' }} />
-          <Line type="monotone" dataKey="price" name="Property price" stroke="var(--buy)" strokeWidth={2} dot={false} isAnimationActive={false} />
-          <Line type="monotone" dataKey="rent" name="Rent" stroke="var(--rent)" strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function Notes() {
-  return (
-    <section className="card notes">
-      <h2>How it works and what it leaves out</h2>
-      <ul>
-        <li>
-          <b>Same money on both sides.</b> At purchase the renter invests the buyer's down payment and fees. Each month the
-          cheaper side invests the gap (often the renter early on, the owner once the mortgage is paid off). Both pots earn
-          the investment return.
-        </li>
-        <li>
-          <b>No property tax, no capital gains tax</b> in the UAE. If your home country taxes you on investment gains, set
-          the tax on returns.
-        </li>
-        <li>
-          <b>Down payment rules (Central Bank):</b> expats need at least 20% up to AED 5M and 30% above; UAE nationals 15% /
-          25%; second homes and off-plan need more (about 35-50%). Check with your bank.
-        </li>
-        <li>
-          <b>Early settlement fee</b> is capped by the Central Bank at 1% of the outstanding loan or AED 10,000, whichever
-          is lower. Some fixed-rate deals charge more when you break the fixed period; adjust if yours does.
-        </li>
-        <li>
-          <b>Housing fee.</b> Dubai charges 5% of the rental value through DEWA to tenants and owner-occupiers alike, so it
-          mostly cancels out. In Abu Dhabi expat tenants pay 5% of rent to the municipality; owner-occupiers are set to 0 by
-          default, change it if you are charged.
-        </li>
-        <li>
-          <b>Not counted:</b> the security deposit (5-10% of rent, returned), off-plan payment plans, renting the
-          property out, a Golden Visa (property worth AED 2M or more qualifies, a real non-financial benefit), and the
-          freedom to leave the country quickly.
-        </li>
-        <li>
-          <b>Why the buy year matters.</b> With steady growth every row of the grid is nearly the same. Pick a market
-          scenario (a crash, a slump) to see how timing changes the answer.
-        </li>
-      </ul>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ inputs */
+/* ------------------------------------------------------------------ config */
 
-type Kind = 'aed' | 'pct' | 'yrs';
+function fmtList(vs: number[], kind: Kind): string {
+  return vs
+    .map((v) => {
+      if (kind === 'pct') return String(+(v * 100).toFixed(3));
+      if (kind === 'aed') {
+        if (v !== 0 && v % 1_000_000 === 0) return `${v / 1_000_000}M`;
+        if (v !== 0 && v % 1000 === 0) return `${v / 1000}k`;
+      }
+      return String(v);
+    })
+    .join(', ');
+}
 
-function Num({
-  label, value, onChange, kind, hint, step,
-}: { label: string; value: number; onChange: (v: number) => void; kind: Kind; hint?: ReactNode; step?: number }) {
-  const shown = kind === 'pct' ? +(value * 100).toFixed(3) : value;
-  const [txt, setTxt] = useState(String(shown));
+function parseList(t: string, kind: Kind): number[] {
+  const out: number[] = [];
+  for (const tok of t.split(/[,;\s]+/)) {
+    const m = tok.trim().match(/^(-?\d*\.?\d+)([kKmM]?)$/);
+    if (!m) continue;
+    const mult = m[2].toLowerCase() === 'k' ? 1e3 : m[2].toLowerCase() === 'm' ? 1e6 : 1;
+    let v = Number(m[1]) * mult;
+    if (kind === 'pct') v = +(v / 100).toFixed(6);
+    if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
+function ListField({ label, hint, kind, values, onChange }: { label: string; hint?: string; kind: Kind; values: number[]; onChange: (v: number[]) => void }) {
+  const [txt, setTxt] = useState(fmtList(values, kind));
   const [focus, setFocus] = useState(false);
   useEffect(() => {
-    if (!focus) setTxt(String(shown));
-  }, [shown, focus]);
-  const commit = (t: string) => {
-    setTxt(t);
-    const n = Number(t.replace(/,/g, ''));
-    if (t.trim() !== '' && Number.isFinite(n)) onChange(kind === 'pct' ? n / 100 : n);
-  };
+    if (!focus) setTxt(fmtList(values, kind));
+  }, [values, kind, focus]);
+  const n = values.length;
   return (
     <label className="field">
-      <span className="field-l">{label}</span>
-      <span className="field-in">
+      <span className="field-l">
+        {label}
+        {n > 1 && <span className="badge">{n} values</span>}
+      </span>
+      <span className={n > 1 ? 'field-in multi' : 'field-in'}>
         {kind === 'aed' && <span className="unit pre">AED</span>}
         <input
-          inputMode="decimal"
-          value={focus ? txt : kind === 'aed' ? Number(shown).toLocaleString('en-US') : txt}
-          step={step}
-          onFocus={() => { setFocus(true); setTxt(String(shown)); }}
+          value={txt}
+          onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
-          onChange={(e) => commit(e.target.value)}
+          onChange={(e) => {
+            setTxt(e.target.value);
+            const v = parseList(e.target.value, kind);
+            if (v.length) onChange(v);
+          }}
         />
         {kind === 'pct' && <span className="unit">%</span>}
         {kind === 'yrs' && <span className="unit">yrs</span>}
@@ -688,158 +325,131 @@ function Num({
   );
 }
 
-const PHONE = typeof window !== 'undefined' && window.matchMedia('(max-width: 880px)').matches;
-
-function Group({ title, summary, children, open }: { title: string; summary?: string; children: ReactNode; open?: boolean }) {
-  // on phones only the first group starts open, so the results are not buried under the inputs
-  const [isOpen] = useState(PHONE ? title === 'Property & mortgage' : !!open);
+function Checks<T extends string>({
+  label, all, value, name, onChange,
+}: { label: string; all: T[]; value: T[]; name: (x: T) => string; onChange: (v: T[]) => void }) {
   return (
-    <details className="group" open={isOpen}>
-      <summary>
-        <span>{title}</span>
-        {summary && <span className="gsum">{summary}</span>}
-      </summary>
-      <div className="gbody">{children}</div>
-    </details>
+    <div className="field">
+      <span className="field-l">
+        {label}
+        {value.length > 1 && <span className="badge">{value.length} values</span>}
+      </span>
+      <div className="checks">
+        {all.map((x) => (
+          <label key={x} className={value.includes(x) ? 'cbx on' : 'cbx'}>
+            <input
+              type="checkbox"
+              checked={value.includes(x)}
+              onChange={() => onChange(all.filter((y) => (y === x ? !value.includes(x) : value.includes(y))))}
+            />
+            {name(x)}
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function Inputs({ s, setS, set }: { s: AppState; setS: (f: (o: AppState) => AppState) => void; set: (p: Partial<Params>) => void }) {
-  const { p } = s;
-  const loan = p.price * (1 - p.downPct);
-  const setEmirate = (e: Emirate) => set({ ...PRESETS[e], emirate: e });
-  const minDown = p.price > 5_000_000 ? 0.3 : 0.2;
-  const sc = SCENARIOS.find((x) => x.key === p.scenario)!;
+function ConfigForm({ c, setC, total }: { c: Config; setC: (f: (o: Config) => Config) => void; total: number }) {
+  const groups = [...new Set(FIELDS.map((f) => f.group))];
+  const setList = (k: string, v: number[]) => setC((o) => ({ ...o, lists: { ...o.lists, [k]: v } }));
+  const count = (g: string) =>
+    FIELDS.filter((f) => f.group === g && c.lists[f.key].length > 1).length + (g === 'Market' && c.cycles.length > 1 ? 1 : 0);
   return (
     <div className="form">
-      <div className="seg" role="radiogroup" aria-label="Emirate">
-        {(['DXB', 'AUH'] as Emirate[]).map((e) => (
-          <button key={e} className={p.emirate === e ? 'on' : ''} onClick={() => setEmirate(e)}>
-            {e === 'DXB' ? 'Dubai' : 'Abu Dhabi'}
-          </button>
-        ))}
-      </div>
+      <p className="form-intro">
+        Type one value, or several separated by commas (e.g. <code>7, 5, 3, 1, -2</code>). Every combination becomes one
+        line: <b>{total}</b> now.
+      </p>
 
-      <Group title="Property & mortgage" summary={`${abbr(p.price)} · ${pct(p.downPct)} down`} open>
-        <Num label="Property price today" kind="aed" value={p.price} onChange={(v) => set({ price: v })} />
-        <Num
-          label="Down payment"
-          kind="pct"
-          value={p.downPct}
-          onChange={(v) => set({ downPct: v })}
-          hint={
-            <>
-              Loan {aed(loan)}.{' '}
-              {p.downPct < minDown && p.downPct < 1 ? (
-                <span className="warn">Expats need at least {pct(minDown)} at this price.</span>
-              ) : p.downPct >= 1 ? 'Cash buyer.' : `Expat minimum ${pct(minDown)}.`}
-            </>
-          }
-        />
-        <Num label="Fixed rate" kind="pct" value={p.fixedRate} onChange={(v) => set({ fixedRate: v })} />
-        <Num label="Fixed for" kind="yrs" value={p.fixedYears} onChange={(v) => set({ fixedYears: v })} />
-        <Num
-          label="Rate after fixed period"
-          kind="pct"
-          value={p.varRate}
-          onChange={(v) => set({ varRate: v })}
-          hint="3-month EIBOR (4.2% in Sept 2026) + about 1.75%"
-        />
-        <Num label="Mortgage term" kind="yrs" value={p.term} onChange={(v) => set({ term: v })} hint="Max 25 years, must end by age 65 for most expats" />
-      </Group>
+      {groups.map((g, gi) => (
+        <details className="group" key={g} open={gi < 5}>
+          <summary>
+            <span>{g}</span>
+            {count(g) > 0 && <span className="gsum">{count(g)} varying</span>}
+          </summary>
+          <div className="gbody">
+            {FIELDS.filter((f) => f.group === g).map((f) => (
+              <ListField key={f.key} label={f.label} hint={f.hint} kind={f.kind} values={c.lists[f.key]} onChange={(v) => setList(f.key, v)} />
+            ))}
+            {g === 'Timing' && (
+              <label className="field">
+                <span className="field-l">Show sell years up to</span>
+                <span className="field-in">
+                  <input
+                    inputMode="numeric"
+                    defaultValue={c.horizon}
+                    onChange={(e) => {
+                      const n = Math.round(Number(e.target.value));
+                      if (n >= 1 && n <= 35) setC((o) => ({ ...o, horizon: n }));
+                    }}
+                  />
+                  <span className="unit">yrs held</span>
+                </span>
+              </label>
+            )}
+            {g === 'Market' && (
+              <div className="span2">
+                <Checks<ScenarioKey>
+                  label="Market cycle on top of the trend"
+                  all={CYCLES.map((s) => s.key)}
+                  value={c.cycles}
+                  name={(k) => CYCLES.find((s) => s.key === k)!.label}
+                  onChange={(v) => setC((o) => ({ ...o, cycles: v }))}
+                />
+              </div>
+            )}
+          </div>
+        </details>
+      ))}
 
-      <Group title="Renting" summary={`${abbr(p.rent)}/yr · +${pct(p.rentGrowth)}`} open>
-        <Num label="Annual rent for a similar home" kind="aed" value={p.rent} onChange={(v) => set({ rent: v })} hint={`Gross yield ${pct(p.rent / p.price)}`} />
-        <Num label="Rent increase per year" kind="pct" value={p.rentGrowth} onChange={(v) => set({ rentGrowth: v })} />
-        <Num label={p.emirate === 'DXB' ? 'Housing fee (DEWA)' : 'Municipality fee'} kind="pct" value={p.renterHousingFeePct} onChange={(v) => set({ renterHousingFeePct: v })} hint="% of annual rent" />
-        <Num label="Move every" kind="yrs" value={p.moveEveryYears} onChange={(v) => set({ moveEveryYears: v })} hint="0 = never move" />
-        <Num label="Agent fee per move" kind="pct" value={p.rentAgentPct} onChange={(v) => set({ rentAgentPct: v })} hint="% of annual rent, + VAT" />
-        <Num label="Other costs per move" kind="aed" value={p.moveCost} onChange={(v) => set({ moveCost: v })} hint="Movers, Ejari/Tawtheeq, reconnection" />
-      </Group>
-
-      <Group title="Market" summary={`${pct(p.priceGrowth)}/yr · ${sc.label}`} open>
-        <Num label="Property price change per year" kind="pct" value={p.priceGrowth} onChange={(v) => set({ priceGrowth: v })} />
-        <label className="field">
-          <span className="field-l">Scenario</span>
-          <select
-            value={p.scenario}
-            onChange={(e) => {
-              const key = e.target.value as Params['scenario'];
-              setS((o) => ({
-                ...o,
-                p: { ...o.p, scenario: key },
-                custom: key === 'custom' ? marketPath(o.p, o.custom, o.p.maxBuyYear + o.p.maxHold).price : o.custom,
-              }));
-            }}
-          >
-            {SCENARIOS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
-          </select>
-          <span className="hint">{sc.note}</span>
-        </label>
-        <Num label="Rents follow price swings by" kind="pct" value={p.rentFollows} onChange={(v) => set({ rentFollows: v })} hint="100% = rents move as much as prices in a crash or boom" />
-        {p.scenario === 'custom' && (
-          <div className="custom">
-            <div className="custom-h">
-              Price change per year
-              <button className="link" onClick={() => setS((o) => ({ ...o, custom: initialCustom(o.p) }))}>reset</button>
-            </div>
-            <div className="custom-grid">
-              {Array.from({ length: p.maxBuyYear + p.maxHold }, (_, i) => s.custom[i] ?? p.priceGrowth).map((g, i) => (
-                <Num
-                  key={i}
-                  label={String(NOW + i)}
-                  kind="pct"
-                  value={g}
-                  onChange={(v) => setS((o) => { const c = [...o.custom]; while (c.length <= i) c.push(o.p.priceGrowth); c[i] = v; return { ...o, custom: c }; })}
+      <details className="group">
+        <summary>
+          <span>Emirate fees</span>
+          {c.emirates.length > 1 && <span className="gsum">1 varying</span>}
+        </summary>
+        <div className="gbody">
+          <div className="span2">
+            <Checks<Emirate> label="Emirate" all={EMIRATES} value={c.emirates} name={(e) => EM_LABEL[e]} onChange={(v) => setC((o) => ({ ...o, emirates: v }))} />
+          </div>
+          {c.emirates.map((e) => (
+            <div className="em-col" key={e}>
+              <div className="em-h">{EM_LABEL[e]}</div>
+              {EM_FIELDS.map((f) => (
+                <ListField
+                  key={f.key}
+                  label={f.label}
+                  kind={f.kind}
+                  values={[c.emFees[e][f.key]]}
+                  onChange={(v) => setC((o) => ({ ...o, emFees: { ...o.emFees, [e]: { ...o.emFees[e], [f.key]: v[0] } } }))}
                 />
               ))}
             </div>
-          </div>
-        )}
-      </Group>
+          ))}
+        </div>
+      </details>
 
-      <Group title="Investing the difference" summary={`${pct(p.investReturn)}/yr`} open>
-        <Num label="Investment return per year" kind="pct" value={p.investReturn} onChange={(v) => set({ investReturn: v })} hint="What cash not tied up in the home earns" />
-        <Num label="Tax on returns" kind="pct" value={p.investTax} onChange={(v) => set({ investTax: v })} hint="0 in the UAE; set it if your home country taxes you" />
-        <Num label="Inflation" kind="pct" value={p.inflation} onChange={(v) => set({ inflation: v })} hint="Only used for the today's-money view" />
-      </Group>
+      <details className="group">
+        <summary>
+          <span>What is counted</span>
+        </summary>
+        <div className="notes">
+          <p>
+            <b>Cost of renting</b>: rent, housing fee, agent fee and moving costs every few years, minus what your unspent
+            money earned at the chosen return (the down payment and buying fees you kept, plus each month's saving while
+            renting is cheaper).
+          </p>
+          <p>
+            <b>Cost of buying then selling</b>: down payment, transfer fee, agent + VAT, trustee and mortgage fees, moving
+            in, mortgage payments, service charges, maintenance, insurance and housing fee; then minus the sale price, plus
+            the selling agent + VAT, NOC, early settlement fee (1% of the loan left, max AED 10k) and the loan payoff;
+            minus what the owner's own monthly savings earned once owning is cheaper than renting.
+          </p>
+          <p>No property tax or capital gains tax in the UAE. Not counted: security deposit, off-plan payment plans, Golden Visa.</p>
+        </div>
+      </details>
 
-      <Group title="Buying costs" summary={`${pct(p.transferPct)} transfer + ${pct(p.buyAgentPct)} agent`}>
-        <Num label={p.emirate === 'DXB' ? 'DLD transfer fee' : 'DMT transfer fee'} kind="pct" value={p.transferPct} onChange={(v) => set({ transferPct: v })} />
-        <Num label="Agent commission" kind="pct" value={p.buyAgentPct} onChange={(v) => set({ buyAgentPct: v })} hint={`+ ${pct(VAT)} VAT`} />
-        <Num label="Title deed + trustee office" kind="aed" value={p.regFixed} onChange={(v) => set({ regFixed: v })} hint="Incl. VAT" />
-        <Num label="Mortgage registration" kind="pct" value={p.mortgageRegPct} onChange={(v) => set({ mortgageRegPct: v })} hint="% of loan" />
-        <Num label="Mortgage registration, fixed" kind="aed" value={p.mortgageRegFixed} onChange={(v) => set({ mortgageRegFixed: v })} />
-        <Num label="Bank arrangement fee" kind="pct" value={p.bankFeePct} onChange={(v) => set({ bankFeePct: v })} hint="% of loan (max 1%), + VAT" />
-        <Num label="Valuation" kind="aed" value={p.valuation} onChange={(v) => set({ valuation: v })} />
-        <Num label="Moving in" kind="aed" value={p.moveInCost} onChange={(v) => set({ moveInCost: v })} hint="Movers, DEWA/ADDC deposit, small fixes" />
-      </Group>
-
-      <Group title="Owning costs" summary={`${abbr(p.serviceCharge)}/yr service`}>
-        <Num label="Service charges per year" kind="aed" value={p.serviceCharge} onChange={(v) => set({ serviceCharge: v })} hint="Usually AED 12-30 per sq ft" />
-        <Num label="Service charge increase" kind="pct" value={p.serviceChargeGrowth} onChange={(v) => set({ serviceChargeGrowth: v })} />
-        <Num label="Maintenance per year" kind="pct" value={p.maintenancePct} onChange={(v) => set({ maintenancePct: v })} hint="% of property value (more for villas)" />
-        <Num label="Home insurance per year" kind="pct" value={p.insurancePct} onChange={(v) => set({ insurancePct: v })} hint="% of property value" />
-        <Num label="Mortgage life insurance" kind="pct" value={p.lifeInsPct} onChange={(v) => set({ lifeInsPct: v })} hint="% of loan balance per year" />
-        <Num label="Owner housing fee" kind="pct" value={p.ownerHousingFeePct} onChange={(v) => set({ ownerHousingFeePct: v })} hint="% of equivalent rent" />
-      </Group>
-
-      <Group title="Selling costs" summary={`${pct(p.sellAgentPct)} agent`}>
-        <Num label="Agent commission" kind="pct" value={p.sellAgentPct} onChange={(v) => set({ sellAgentPct: v })} hint={`+ ${pct(VAT)} VAT`} />
-        <Num label="Other selling fees" kind="aed" value={p.sellFixed} onChange={(v) => set({ sellFixed: v })} hint="Developer NOC, mortgage release" />
-        <Num label="Early settlement fee" kind="pct" value={p.earlySettlePct} onChange={(v) => set({ earlySettlePct: v })} hint="% of loan left..." />
-        <Num label="...capped at" kind="aed" value={p.earlySettleCap} onChange={(v) => set({ earlySettleCap: v })} />
-      </Group>
-
-      <Group title="Horizon">
-        <Num label="Latest buy year" kind="yrs" value={p.maxBuyYear} onChange={(v) => set({ maxBuyYear: Math.max(0, Math.min(20, Math.round(v))) })} hint="Years from now" />
-        <Num label="Longest holding period" kind="yrs" value={p.maxHold} onChange={(v) => set({ maxHold: Math.max(1, Math.min(35, Math.round(v))) })} />
-      </Group>
-
-      <button
-        className="reset"
-        onClick={() => setS(() => ({ p: { ...DEFAULTS }, custom: initialCustom(DEFAULTS), buyYear: 0, real: false, cmp: DEFAULT_CMP }))}
-      >
+      <button className="reset" onClick={() => setC(() => structuredClone(DEFAULT_CONFIG))}>
         Reset everything
       </button>
     </div>

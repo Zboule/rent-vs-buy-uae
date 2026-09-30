@@ -11,13 +11,12 @@ modelled on the UAE's real cycles. Every value is editable and every scenario is
 
 ## What you see
 
-- **Presets compared**: tick price trends (optimistic to pessimistic), market cycles, investment returns,
-  emirates and financing. Every combination is one curve on a single chart (colour = price trend x
-  cycle, line style = return x emirate x financing), plus a break-even table.
-- **Buy in X, sell in Y**: the advantage for every sell year, for the selected buy year.
-- **Heatmap**: every buy year (rows) × every holding period (columns). The outlined cell is the
-  break-even holding period.
-- **Year-by-year table**: sale price, selling costs, loan left, net proceeds, both portfolios.
+Just the configuration and one graph. **Every option takes one value or several, separated by
+commas** (`7, 5, 3, 1, -2`), and every combination of values is one line: 5 price trends x 4
+investment returns x 2 mortgage terms = 40 lines. Colour, line style and thickness each follow
+one varying option (selectable); tap a value to isolate its lines, tap a year to list every line
+with its value, break-even and first-year mortgage payment vs rent. A cash buyer ignores the
+mortgage options, so it does not multiply lines.
 
 ## What the number means
 
