@@ -155,7 +155,7 @@ export const DEFAULTS: Params = {
   downPct: 0.2,
   fixedRate: 0.0395,
   fixedYears: 3,
-  varRate: 0.0595,
+  varRate: 0.061,
   term: 25,
   transferPct: 0.04,
   buyAgentPct: 0.02,
@@ -304,7 +304,7 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
   const fixedMonths = p.fixedYears * 12;
 
   let balance = costs.loan;
-  let rate = p.fixedRate / 12;
+  let rate = (p.fixedYears > 0 ? p.fixedRate : p.varRate) / 12;
   let pay = payment(balance, rate, termMonths);
   const firstPay = pay;
   let owner = 0;
@@ -324,7 +324,8 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
     const annualRent = p.rent * rIdxYear[yr];
     const value = p.price * pIdx[t];
 
-    // owner's month
+    // owner's month (life cover is priced on the balance at the start of the month)
+    const lifeIns = (balance * p.lifeInsPct) / 12;
     let mortgage = 0;
     if (balance > 0.005 && m < termMonths) {
       const interest = balance * rate;
@@ -337,7 +338,7 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
     const running =
       (p.serviceCharge * Math.pow(1 + p.serviceChargeGrowth, yr)) / 12 +
       (value * (p.maintenancePct + p.insurancePct)) / 12 +
-      (balance * p.lifeInsPct) / 12 +
+      lifeIns +
       (annualRent * p.ownerHousingFeePct) / 12;
     paidOwnerCosts += running;
     const ownerOut = mortgage + running;
