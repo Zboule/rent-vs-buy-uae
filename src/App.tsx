@@ -62,7 +62,7 @@ export default function App() {
           </button>
         ) : !settingsVisible ? (
           <button className="bb" onClick={toSettings}>
-            Your assumptions{cnt.varying.length ? ` · ${cnt.varying.length} compared` : ''} <span aria-hidden>›</span>
+            Assumptions{cnt.varying.length ? ` · ${cnt.varying.length} varying` : ''} <span aria-hidden>›</span>
           </button>
         ) : null}
       </div>
@@ -119,7 +119,7 @@ const CHART_H = 290;
 const PLOT_TOP = 10;
 const PLOT_BOTTOM = CHART_H - 28;
 const PRESETS = [3, 6, 10, 15, 25];
-const COLLAPSED = 10;
+const DENSE = 12; // above this many lines, lines draw lighter until one is focused
 
 /* ------------------------------------------------------------------ graph */
 
@@ -131,7 +131,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   const inFocus = (l: Styled) => !fk || String(l.combo[fk]) === fv;
   const [pinned, setPinned] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [customHz, setCustomHz] = useState(false);
   const active = pinned ?? hover;
 
@@ -189,11 +189,18 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
 
   // readout rows, grouped by scenario when the scenario and something else both vary
   const group = enc.colorKey === 'cycle' && cnt.varying.length > 1;
-  const sorted = [...atSell].sort((a, b) => b.a - a.a);
+  // inside a scenario group the order is fixed (the line style is the identity), groups keep their order
+  const lineIdx = (l: Styled) => ls.findIndex((x) => x.id === l.id);
   const ordered = group
-    ? CYCLES.flatMap((s) => sorted.filter((x) => x.l.combo.cycle === s.key))
-    : sorted;
-  const shown = showAll || ordered.length <= COLLAPSED + 2 ? ordered : ordered.slice(0, COLLAPSED);
+    ? CYCLES.flatMap((s) => atSell.filter((x) => x.l.combo.cycle === s.key).sort((a, b) => lineIdx(a.l) - lineIdx(b.l)))
+    : [...atSell].sort((a, b) => b.a - a.a);
+  // collapse per group, never hiding a whole group (the bad news stays visible)
+  const groupSize = (sc: string) => ordered.filter((x) => x.l.combo.cycle === sc).length;
+  const collapse = group && ordered.length > DENSE;
+  const shown = collapse
+    ? ordered.filter((x, i) => openGroups[String(x.l.combo.cycle)] || i === 0 || ordered[i - 1].l.combo.cycle !== x.l.combo.cycle)
+    : ordered;
+  const dense = visible.length > DENSE;
   const idx = years.indexOf(sellYear);
   const rank = (k: string) => {
     const i = [enc.colorKey, enc.dashKey, enc.shadeKey].indexOf(k);
@@ -229,7 +236,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
           </button>
         ))}
         <button role="radio" aria-checked={isCustomHz} className={isCustomHz ? 'on' : ''} onClick={() => setCustomHz(true)} aria-label="Custom number of years">
-          {isCustomHz ? `${c.horizon}y` : '…'}
+          {isCustomHz ? `${c.horizon}y` : 'Custom'}
         </button>
       </div>
       <Sheet open={customHz} onClose={() => setCustomHz(false)} title="Years to show" subtitle="How far ahead the graph goes after buying.">
@@ -243,21 +250,22 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
         <ResponsiveContainer width="100%" height={CHART_H}>
           <LineChart
             data={data}
-            margin={{ top: PLOT_TOP, right: 14, left: 0, bottom: 0 }}
+            margin={{ top: PLOT_TOP, right: 16, left: 0, bottom: 0 }}
             onMouseMove={(e) => onMove(e as never, false)}
             onClick={(e) => onMove(e as never, true)}
           >
-            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.06} ifOverflow="hidden" label={{ value: 'Buying cheaper', position: 'insideTopLeft', fill: 'var(--buy)', fontSize: 11, fontWeight: 600 }} />
-            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.07} ifOverflow="hidden" label={{ value: 'Renting cheaper', position: 'insideBottomLeft', fill: 'var(--rent)', fontSize: 11, fontWeight: 600 }} />
+            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.06} ifOverflow="hidden" label={{ value: 'Buying cheaper', position: 'insideTopLeft', fill: 'var(--buy-ink)', fontSize: 12, fontWeight: 600 }} />
+            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.07} ifOverflow="hidden" label={{ value: 'Renting cheaper', position: 'insideBottomLeft', fill: 'var(--rent-ink)', fontSize: 12, fontWeight: 600 }} />
             <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis dataKey="year" tick={{ fill: 'var(--label2)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={8} height={28} />
-            <YAxis domain={[y0, y1]} ticks={ticks} tickFormatter={signed} tick={{ fill: 'var(--label2)', fontSize: 11 }} width={46} tickLine={false} axisLine={false} allowDataOverflow />
+            <XAxis dataKey="year" tick={{ fill: 'var(--label2)', fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={8} height={28} />
+            <YAxis domain={[y0, y1]} ticks={ticks} tickFormatter={signed} tick={{ fill: 'var(--label2)', fontSize: 12 }} width={48} tickLine={false} axisLine={false} allowDataOverflow />
             <ReferenceLine y={0} stroke="var(--label3)" strokeWidth={1.5} />
             <ReferenceLine x={sellYear} stroke="var(--label2)" strokeDasharray="3 3" />
             {styled.map((l) => {
               const on = inFocus(l);
               const hi = active === l.id;
-              const op = !on ? 0.06 : active ? (hi ? 1 : 0.14) : 1;
+              const focusGroup = fk === 'cycle';
+              const op = !on ? 0.06 : active ? (hi ? 1 : 0.14) : dense && !focusGroup ? 0.6 : 1;
               return (
                 <Line
                   key={l.id}
@@ -267,7 +275,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                   strokeDasharray={l.dash || undefined}
                   strokeOpacity={op}
                   dot={(p: { cx?: number; cy?: number; payload?: { year: number }; index?: number }) =>
-                    on && p.payload?.year === sellYear && p.cx != null && p.cy != null && (!active || hi) ? (
+                    on && p.payload?.year === sellYear && p.cx != null && p.cy != null && (active ? hi : !dense || fk) ? (
                       <circle key={`${l.id}-d`} cx={p.cx} cy={p.cy} r={hi ? 5 : 3.5} fill={l.color} stroke="var(--surface)" strokeWidth={1.5} />
                     ) : (
                       <g key={`${l.id}-${p.index}`} />
@@ -321,7 +329,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                     <span className="ro-group-hint">{c.focus === `cycle:${sc}` ? 'Show all' : 'Show only'}</span>
                   </button>
                 )}
-                <button className={hi ? 'ro hi' : active ? 'ro dim' : 'ro'} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
+                <button className={`${hi ? 'ro hi' : active ? 'ro dim' : 'ro'}${header ? ' first' : ''}`} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
                   <Swatch color={l.color} dash={l.dash} w={22} width={3} />
                   <span className="ro-mid">
                     <span className="ro-name">{title}</span>
@@ -340,13 +348,15 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                     <span className="verdict">{even ? 'about even' : a >= 0 ? 'buying cheaper' : 'renting cheaper'}</span>
                   </span>
                 </button>
+                {collapse && header && groupSize(sc) > 1 && (
+                  <button className="ro-more" onClick={() => setOpenGroups((o) => ({ ...o, [sc]: !o[sc] }))} aria-expanded={!!openGroups[sc]}>
+                    {openGroups[sc] ? 'Show less' : `+${groupSize(sc) - 1} more`}
+                  </button>
+                )}
               </li>
             );
           })}
         </ul>
-        {shown.length < ordered.length && (
-          <button className="btn plain showall" onClick={() => setShowAll(true)}>Show all {ordered.length}</button>
-        )}
       </div>
     </>
   );

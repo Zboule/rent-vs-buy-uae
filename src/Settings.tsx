@@ -102,7 +102,7 @@ function OptionRow({ f, c, setC, enc, openSheet, note, disabled }: {
         <div className="opt-text">
           <span className="opt-label">
             {f.label}
-            {many && <span className="times">×{values.length}</span>}
+            {many && <span className="times">{values.length} values</span>}
           </span>
           {(note || f.hint) && <span className="opt-hint">{note ?? f.hint}</span>}
         </div>
@@ -278,7 +278,7 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
               {!trend && (
                 <div className="scard-body">
                   <div className="scard-facts">
-                    <span>Prices {pctS(cum(path, 3))} in 3 years, {pctS(cum(path, 6))} in 6, {pctS(cum(path, 10))} in 10</span>
+                    <span>Prices {pctS(cum(path, 3))} in 3 years, {pctS(cum(path, 6))} in 6</span>
                   </div>
                   <div className="scard-ret">
                     <span>Your savings earn</span>
@@ -361,19 +361,86 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
     <OptionRow key={f.key} f={f} c={c} setC={setC} enc={enc} openSheet={setSheet} note={noteFor(f)} disabled={LOAN_KEYS.includes(f.key) && allCash} />
   );
 
-  const varyingOpts = cnt.varying;
-  const jump = (key: string) => {
-    if (key === 'cycle') return setScen(true);
-    const f = FIELD[key];
-    if (f && !ESSENTIALS.includes(key) && f.group !== 'Constant trend') setOpenGroups((g) => ({ ...g, [f.group]: true }));
-    if (f?.group === 'Constant trend') return setScen(true);
-    setTimeout(() => document.getElementById(`opt-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-  };
-
+  const vset = new Set(cnt.varying.map((d) => d.key));
   const q = query.trim().toLowerCase();
-  const more = FIELDS.filter((f) => !ESSENTIALS.includes(f.key) && f.group !== 'Constant trend');
-  const matches = q ? more.filter((f) => `${f.label} ${f.group} ${f.hint ?? ''}`.toLowerCase().includes(q)) : [];
+  const more = FIELDS.filter((f) => !ESSENTIALS.includes(f.key) && f.group !== 'Constant trend' && !vset.has(f.key));
+  const matches = q ? FIELDS.filter((f) => f.group !== 'Constant trend' && `${f.label} ${f.group} ${f.hint ?? ''}`.toLowerCase().includes(q)) : [];
   const selectedScen = CYCLES.filter((x) => c.cycles.includes(x.key));
+  const values = (n: number) => <span className="times">{n} values</span>;
+
+  const scenRow = (
+    <div id="opt-cycle" key="cycle" className={`opt${selectedScen.length > 1 ? ' varying' : ''}`}>
+      <div className="opt-main">
+        <div className="opt-text">
+          <span className="opt-label">Scenario{selectedScen.length > 1 && values(selectedScen.length)}</span>
+          <span className="opt-hint">Property prices year by year + what your savings earn</span>
+        </div>
+        <button className="plus" onClick={() => setScen(true)} aria-label="Choose scenarios">
+          <PlusIcon />
+          <span className="plus-t">{selectedScen.length > 1 ? 'Edit' : 'Compare'}</span>
+        </button>
+      </div>
+      <div className="chips">
+        {selectedScen.map((x) => (
+          <Chip
+            key={x.key}
+            label={x.label.split(':')[0]}
+            color={enc.colorOf('cycle', x.key)}
+            onClick={() => setScen(true)}
+            onRemove={selectedScen.length > 1 ? () => setC((o) => ({ ...o, cycles: o.cycles.filter((k) => k !== x.key) })) : undefined}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
+  const emMany = c.emirates.length > 1;
+  const emRow = (
+    <div id="opt-emirate" key="emirate" className={`opt${emMany ? ' varying' : ''}`}>
+      <div className="opt-main">
+        <div className="opt-text">
+          <span className="opt-label">Emirate{emMany && values(2)}</span>
+          <span className="opt-hint">Sets purchase and housing fees</span>
+        </div>
+        {!emMany && (
+          <span className="seg">
+            {EMIRATES.map((e) => (
+              <button key={e} className={c.emirates[0] === e ? 'on' : ''} aria-pressed={c.emirates[0] === e} onClick={() => setC((o) => ({ ...o, emirates: [e] }))}>
+                {EM_LABEL[e]}
+              </button>
+            ))}
+          </span>
+        )}
+        {!emMany && (
+          <button className="plus" onClick={() => setC((o) => ({ ...o, emirates: [...EMIRATES] }))} aria-label="Compare both emirates">
+            <PlusIcon />
+            <span className="plus-t">Compare</span>
+          </button>
+        )}
+      </div>
+      {emMany && (
+        <div className="chips">
+          {EMIRATES.map((e) => (
+            <Chip
+              key={e}
+              label={EM_LABEL[e]}
+              color={enc.colorOf('emirate', e)}
+              dash={enc.dashOf('emirate', e)}
+              shadePct={enc.shadeOf('emirate', e)}
+              onClick={() => {}}
+              onRemove={() => setC((o) => ({ ...o, emirates: o.emirates.filter((x) => x !== e) }))}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const comparing = [
+    ...(selectedScen.length > 1 ? [scenRow] : []),
+    ...(emMany ? [emRow] : []),
+    ...FIELDS.filter((f) => vset.has(f.key)).map(row),
+  ];
 
   return (
     <section className="settings" id="settings" aria-label="Your assumptions">
@@ -381,82 +448,25 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
 
       {!hintSeen && (
         <div className="hintcard">
-          <span>Tap <b>+</b> on any option to compare values. Each combination draws one line.</span>
+          <span>Tap <b>Compare</b> on any option to try several values. Each combination draws one line.</span>
           <button className="icon-btn" onClick={dismissHint} aria-label="Dismiss">
             <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
         </div>
       )}
 
-      {varyingOpts.length > 0 && (
+      {comparing.length > 0 && (
         <>
-          <h3 className="group-title">Comparing</h3>
-          <div className="group">
-            {varyingOpts.map((d) => (
-              <button key={d.key} className="cmp-row" onClick={() => jump(d.key)}>
-                <span className="cmp-l">{d.label}</span>
-                <span className="cmp-v">{d.values.map((v) => (d.key === 'cycle' || d.key === 'emirate' ? d.tag(v).split(':')[0] : fmtValue(FIELD[d.key], v as number))).join(', ')}</span>
-                <Chevron />
-              </button>
-            ))}
-          </div>
+          <h3 className="group-title">Comparing <span className="gt-sub">each value draws its own lines</span></h3>
+          <div className="group">{comparing}</div>
         </>
       )}
 
-      <h3 className="group-title">Essentials</h3>
+      <h3 className="group-title">{comparing.length ? 'Fixed' : 'Essentials'}</h3>
       <div className="group">
-        <div id="opt-cycle" className={`opt${selectedScen.length > 1 ? ' varying' : ''}`}>
-          <div className="opt-main">
-            <div className="opt-text">
-              <span className="opt-label">
-                Scenario{selectedScen.length > 1 && <span className="times">×{selectedScen.length}</span>}
-              </span>
-              <span className="opt-hint">Property prices year by year + what your savings earn</span>
-            </div>
-            <button className="btn tinted" onClick={() => setScen(true)}>Edit</button>
-          </div>
-          <div className="chips">
-            {selectedScen.map((x) => (
-              <Chip
-                key={x.key}
-                label={x.label.split(':')[0]}
-                color={enc.colorOf('cycle', x.key)}
-                onClick={() => setScen(true)}
-                onRemove={selectedScen.length > 1 ? () => setC((o) => ({ ...o, cycles: o.cycles.filter((k) => k !== x.key) })) : undefined}
-              />
-            ))}
-          </div>
-        </div>
-        <div id="opt-emirate" className={`opt${c.emirates.length > 1 ? ' varying' : ''}`}>
-          <div className="opt-main">
-            <div className="opt-text">
-              <span className="opt-label">Emirate{c.emirates.length > 1 && <span className="times">×2</span>}</span>
-              <span className="opt-hint">Sets purchase fees and housing fees</span>
-            </div>
-            <span className="seg">
-              {EMIRATES.map((e) => {
-                const on = c.emirates.includes(e);
-                return (
-                  <button
-                    key={e}
-                    className={on ? 'on' : ''}
-                    aria-pressed={on}
-                    onClick={() =>
-                      setC((o) => {
-                        if (on && o.emirates.length === 1) return o;
-                        return { ...o, emirates: EMIRATES.filter((x) => (x === e ? !on : o.emirates.includes(x))) };
-                      })
-                    }
-                  >
-                    {enc.colorOf('emirate', e) && <span className="dot" style={{ background: enc.colorOf('emirate', e)! }} />}
-                    {EM_LABEL[e]}
-                  </button>
-                );
-              })}
-            </span>
-          </div>
-        </div>
-        {ESSENTIALS.map((k) => row(FIELD[k]))}
+        {selectedScen.length <= 1 && scenRow}
+        {!emMany && emRow}
+        {ESSENTIALS.filter((k) => !vset.has(k)).map((k) => row(FIELD[k]))}
       </div>
 
       <h3 className="group-title">More options</h3>
@@ -472,13 +482,13 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
         <div className="group">
           {GROUPS.map((g) => {
             const fs = more.filter((f) => f.group === g);
-            const nVar = fs.filter((f) => c.lists[f.key].length > 1).length;
-            const open = openGroups[g] ?? nVar > 0;
+            if (!fs.length) return null;
+            const open = openGroups[g] ?? false;
             return (
               <div key={g} className="collapsible">
                 <button className="group-head" onClick={() => setOpenGroups((o) => ({ ...o, [g]: !open }))} aria-expanded={open}>
                   <span className="gh-t">{g}</span>
-                  <span className="gh-s">{fs.length} option{fs.length > 1 ? 's' : ''}{nVar ? ` · ${nVar} compared` : ''}</span>
+                  <span className="gh-s">{fs.length} option{fs.length > 1 ? 's' : ''}</span>
                   <Chevron open={open} />
                 </button>
                 {open && fs.map(row)}

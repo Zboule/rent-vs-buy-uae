@@ -1,14 +1,14 @@
 // How lines get their look. Deterministic, so a shared link always draws the same picture:
 // colour = the scenario when it varies, else the first varying option;
 // dash   = the down payment when it varies (and is not the colour), else the next varying option;
-// shade  = the next varying option after that (full, lighter, lightest).
+// shade  = the next varying option after that (full, then mixed toward --shade-to: darker in light mode, lighter in dark).
 import type { Dim } from './config';
 
 export const COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
 export const DASHES = ['', '8 4', '2 4', '12 4 2 4'];
-export const SHADES = [100, 55, 32];
+export const SHADES = [100, 62, 42];
 
-export const shade = (color: string, pct: number) => (pct >= 100 ? color : `color-mix(in oklab, ${color} ${pct}%, var(--surface))`);
+export const shade = (color: string, pct: number) => (pct >= 100 ? color : `color-mix(in oklab, ${color} ${pct}%, var(--shade-to))`);
 
 export interface Encoding {
   colorKey: string;
