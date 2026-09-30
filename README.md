@@ -19,7 +19,15 @@ modelled on the UAE's real cycles. Every value is editable and every scenario is
   break-even holding period.
 - **Year-by-year table**: sale price, selling costs, loan left, net proceeds, both portfolios.
 
-## The math
+## Two views
+
+- **Cost difference** (default): plain cash, no investing. Rent paid (rent + housing fee + agent
+  fees and moves) minus the net cost of buying then selling (down payment + every purchase fee +
+  mortgage payments + service charge, maintenance, insurance, housing fee − net sale proceeds).
+  Positive = buying then selling cost less than renting.
+- **Wealth, investing the difference**: the method below.
+
+## The math (wealth view)
 
 Both paths are identical until year X, so the comparison starts at X with the market's price and
 rent at that point.

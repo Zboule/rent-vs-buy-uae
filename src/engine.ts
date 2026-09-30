@@ -235,6 +235,11 @@ export interface SellRow {
   renterWealth: number;
   advantage: number; // owner - renter, nominal AED at Y
   advantageReal: number; // in today's AED
+  // plain cash view, no investing: what each path cost you in total by year Y
+  rentCost: number; // rent + housing fee + moves
+  buyCost: number; // down payment + fees + mortgage + running costs - net sale proceeds
+  costDiff: number; // rentCost - buyCost: positive = buying and selling cost less than renting
+  costDiffReal: number; // same, every flow deflated to today's money
   // cumulative spend X..Y, for the breakdown
   paidInterest: number;
   paidPrincipal: number;
@@ -273,6 +278,8 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
   let owner = 0;
   let renter = costs.upfront;
   let paidInterest = 0, paidPrincipal = 0, paidOwnerCosts = 0, paidRent = 0;
+  const defl = (t: number) => Math.pow(1 + p.inflation, -t / 12); // today's money
+  let ownerCash = costs.upfront, ownerCashReal = costs.upfront * defl(X * 12), rentReal = 0;
   const rows: SellRow[] = [];
 
   for (let m = 0; m < p.maxHold * 12; m++) {
@@ -309,6 +316,9 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
       renterOut += annualRent * p.rentAgentPct * (1 + VAT) + p.moveCost;
     }
     paidRent += renterOut;
+    ownerCash += ownerOut;
+    ownerCashReal += ownerOut * defl(t);
+    rentReal += renterOut * defl(t);
 
     // both portfolios grow, then whoever spent less invests the difference
     owner *= 1 + invMonthly;
@@ -325,6 +335,8 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
       const netProceeds = salePrice - sellCosts - balance;
       const ownerWealth = owner + netProceeds;
       const advantage = ownerWealth - renter;
+      const buyCost = ownerCash - netProceeds;
+      const buyCostReal = ownerCashReal - netProceeds * defl(t + 1);
       rows.push({
         sellYear: Y,
         held: Y - X,
@@ -337,6 +349,10 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
         renterWealth: renter,
         advantage,
         advantageReal: advantage / Math.pow(1 + p.inflation, Y),
+        rentCost: paidRent,
+        buyCost,
+        costDiff: paidRent - buyCost,
+        costDiffReal: rentReal - buyCostReal,
         paidInterest,
         paidPrincipal,
         paidOwnerCosts,
@@ -351,6 +367,24 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
     else break;
   }
   return { buyYear: X, price, rent: p.rent * rIdxYear[X], costs, monthlyPayment: firstPay, rows, breakEven };
+}
+
+export type Measure = 'cost' | 'wealth';
+
+/** The number every chart plots: positive = buying wins. */
+export function metric(r: SellRow, m: Measure, real: boolean): number {
+  if (m === 'cost') return real ? r.costDiffReal : r.costDiff;
+  return real ? r.advantageReal : r.advantage;
+}
+
+/** First holding period from which buying wins and keeps winning, or null. */
+export function breakEvenOf(rows: SellRow[], f: (r: SellRow) => number): number | null {
+  let be: number | null = null;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (f(rows[i]) > 0) be = rows[i].held;
+    else break;
+  }
+  return be;
 }
 
 export function simulateAll(p: Params, custom: number[]): BuyResult[] {
