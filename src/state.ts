@@ -5,8 +5,10 @@ export interface Compare {
   em: Emirate[];
   sc: ScenarioKey[];
   fin: Financing[];
+  g: string[]; // price trends: 'in' = your input, else yearly growth
+  r: string[]; // investment returns: 'in' = your input, else yearly return
 }
-export const DEFAULT_CMP: Compare = { em: ['DXB'], sc: ['steady', 'crash08', 'slump14', 'boomBust'], fin: ['loan'] };
+export const DEFAULT_CMP: Compare = { em: ['DXB'], sc: ['steady', 'crash08', 'slump14', 'boomBust'], fin: ['loan'], g: ['in'], r: ['in'] };
 
 // All state lives in the URL hash so any scenario is a shareable link.
 // Only values that differ from the defaults are written.
@@ -51,13 +53,13 @@ export function writeHash(s: AppState) {
   if (s.buyYear) q.set('x', String(s.buyYear));
   if (s.real) q.set('real', '1');
   const cmpDefault = { ...DEFAULT_CMP, em: [s.p.emirate] };
-  if (JSON.stringify(s.cmp) !== JSON.stringify(cmpDefault)) q.set('cmp', [s.cmp.em.join('.'), s.cmp.sc.join('.'), s.cmp.fin.join('.')].join('~'));
+  if (JSON.stringify(s.cmp) !== JSON.stringify(cmpDefault)) q.set('cmp', [s.cmp.em, s.cmp.sc, s.cmp.fin, s.cmp.g, s.cmp.r].map((x) => x.join('_')).join('~'));
   const h = q.toString();
   history.replaceState(null, '', h ? `#${h}` : location.pathname);
 }
 
 function parseCmp(v: string): Compare {
-  const [em = '', sc = '', fin = ''] = v.split('~');
-  const list = <T extends string>(x: string) => x.split('.').filter(Boolean) as T[];
-  return { em: list<Emirate>(em), sc: list<ScenarioKey>(sc), fin: list<Financing>(fin) };
+  const [em = '', sc = '', fin = '', g = 'in', r = 'in'] = v.split('~');
+  const list = <T extends string>(x: string) => x.split('_').filter(Boolean) as T[];
+  return { em: list<Emirate>(em), sc: list<ScenarioKey>(sc), fin: list<Financing>(fin), g: list(g), r: list(r) };
 }

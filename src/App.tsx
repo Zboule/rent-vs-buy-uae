@@ -3,7 +3,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  DEFAULTS, PRESETS, SCENARIOS, VAT, marketPath, simulateAll, simulateBuy, type ScenarioKey, type BuyResult, type Emirate, type Params, type SellRow,
+  DEFAULTS, PRESETS, SCENARIOS, VAT, marketPath, simulateAll, simulateBuy, type BuyResult, type Emirate, type Params, type SellRow,
 } from './engine';
 import { DEFAULT_CMP, initialCustom, readHash, writeHash, type AppState, type Compare, type Financing } from './state';
 import { abbr, aed, pct } from './format';
@@ -163,67 +163,102 @@ function Headline({ r, real }: { r: BuyResult; real: boolean }) {
   );
 }
 
-// categorical slots, fixed order (validated palette): one hue per market scenario
-const SC_COLOR: Record<ScenarioKey, string> = {
-  steady: 'var(--s1)', crash08: 'var(--s2)', slump14: 'var(--s3)', boomBust: 'var(--s4)', custom: 'var(--s5)',
-};
-// the other two dimensions are carried by the line style, so colour stays one-per-scenario
+// categorical slots, fixed order (validated palette)
+const SLOTS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
+// emirate × financing are carried by the line style, so colour stays for the market
 const DASH: Record<string, string | undefined> = {
   'DXB-loan': undefined, 'AUH-loan': '7 4', 'DXB-cash': '2 3', 'AUH-cash': '9 3 2 3',
 };
 const EM_LABEL: Record<Emirate, string> = { DXB: 'Dubai', AUH: 'Abu Dhabi' };
-const FIN_LABEL: Record<Financing, string> = { loan: 'with your mortgage', cash: 'cash buyer' };
+const FIN_LABEL: Record<Financing, string> = { loan: 'mortgage', cash: 'cash buyer' };
+// optimistic -> pessimistic
+const TRENDS = [0.07, 0.05, 0.03, 0.01, -0.02];
+const TREND_NAME: Record<string, string> = { '0.07': 'Hot', '0.05': 'Strong', '0.03': 'Moderate', '0.01': 'Flat', '-0.02': 'Falling' };
+const RETURNS = [0.04, 0.06, 0.08, 0.1];
+const signed = (x: number) => `${x >= 0 ? '+' : ''}${pct(x)}`;
+
+/** Round tick values (1/2/2.5/5 × 10^n) covering lo..hi, always including 0. */
+function niceTicks(lo: number, hi: number, target = 5): number[] {
+  const raw = Math.max(1, hi - lo) / target;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => x >= raw)!;
+  const out: number[] = [];
+  for (let t = Math.floor(lo / step) * step; t <= Math.ceil(hi / step) * step + step / 2; t += step) out.push(t);
+  return out;
+}
+
+interface Series { key: string; name: string; color: string; dash?: string; mine: boolean; byRet: Record<string, SellRow[]> }
 
 function PresetCompare({
   p, custom, X, real, cmp, setCmp,
 }: { p: Params; custom: number[]; X: number; real: boolean; cmp: Compare; setCmp: (c: Compare) => void }) {
-  const toggle = <K extends keyof Compare>(k: K, v: Compare[K][number]) => {
+  const toggle = <K extends keyof Compare>(k: K, v: string) => {
     const cur = cmp[k] as string[];
-    const next = cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v];
-    setCmp({ ...cmp, [k]: next });
+    setCmp({ ...cmp, [k]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] });
   };
   const scenarios = SCENARIOS.filter((x) => x.key !== 'custom' || p.scenario === 'custom');
-  const multiEm = cmp.em.length > 1 || cmp.em[0] !== p.emirate;
-  const multiFin = cmp.fin.length > 1 || cmp.fin[0] !== 'loan';
+  const trendKeys = ['in', ...TRENDS.map(String)].filter((k) => cmp.g.includes(k));
+  const scKeys = scenarios.map((x) => x.key).filter((k) => cmp.sc.includes(k));
+  const retKeys = ['in', ...RETURNS.map(String)].filter((k) => cmp.r.includes(k));
+  const emKeys = (['DXB', 'AUH'] as Emirate[]).filter((e) => cmp.em.includes(e));
+  const finKeys = (['loan', 'cash'] as Financing[]).filter((f) => cmp.fin.includes(f));
+  const trendVal = (k: string) => (k === 'in' ? p.priceGrowth : Number(k));
+  const retVal = (k: string) => (k === 'in' ? p.investReturn : Number(k));
+  const trendLabel = (k: string) => (k === 'in' ? `Your input, ${signed(p.priceGrowth)}/yr` : `${TREND_NAME[k]}, ${signed(Number(k))}/yr`);
+  const retLabel = (k: string) => (k === 'in' ? `your input, ${pct(p.investReturn)}` : pct(Number(k)));
 
-  const series = useMemo(() => {
-    const out: { key: string; name: string; color: string; dash?: string; mine: boolean; rows: SellRow[] }[] = [];
-    for (const sc of scenarios.map((x) => x.key).filter((k) => cmp.sc.includes(k)))
-      for (const em of (['DXB', 'AUH'] as Emirate[]).filter((e) => cmp.em.includes(e)))
-        for (const fin of (['loan', 'cash'] as Financing[]).filter((f) => cmp.fin.includes(f))) {
-          const q: Params = {
-            ...p,
-            ...(em !== p.emirate ? { ...PRESETS[em], emirate: em } : {}),
-            scenario: sc,
-            downPct: fin === 'cash' ? 1 : p.downPct,
-          };
-          const label = [
-            SCENARIOS.find((x) => x.key === sc)!.label,
-            multiEm ? EM_LABEL[em] : '',
-            multiFin ? FIN_LABEL[fin] : '',
-          ].filter(Boolean).join(' · ');
+  const combos = trendKeys.flatMap((g) => scKeys.map((sc) => ({ g, sc })));
+  const tooMany = combos.length > SLOTS.length;
+
+  const series = useMemo<Series[]>(() => {
+    const out: Series[] = [];
+    combos.slice(0, SLOTS.length).forEach(({ g, sc }, ci) => {
+      for (const em of emKeys)
+        for (const fin of finKeys) {
+          const byRet: Record<string, SellRow[]> = {};
+          for (const r of retKeys) {
+            const q: Params = {
+              ...p,
+              ...(em !== p.emirate ? { ...PRESETS[em], emirate: em } : {}),
+              scenario: sc,
+              priceGrowth: trendVal(g),
+              investReturn: retVal(r),
+              downPct: fin === 'cash' ? 1 : p.downPct,
+            };
+            byRet[r] = simulateBuy(q, X, custom).rows;
+          }
+          const name = [
+            trendKeys.length > 1 || g !== 'in' ? trendLabel(g) : '',
+            scKeys.length > 1 || sc !== 'steady' ? SCENARIOS.find((x) => x.key === sc)!.label : '',
+            emKeys.length > 1 || em !== p.emirate ? EM_LABEL[em] : '',
+            finKeys.length > 1 || fin !== 'loan' ? FIN_LABEL[fin] : '',
+          ].filter(Boolean).join(' · ') || 'Your inputs';
           out.push({
-            key: `${sc}-${em}-${fin}`,
-            name: label,
-            color: SC_COLOR[sc],
+            key: `${g}|${sc}|${em}|${fin}`,
+            name,
+            color: SLOTS[ci],
             dash: DASH[`${em}-${fin}`],
-            mine: sc === p.scenario && em === p.emirate && (fin === 'cash') === (p.downPct >= 1),
-            rows: simulateBuy(q, X, custom).rows,
+            mine: g === 'in' && sc === p.scenario && em === p.emirate && (fin === 'cash') === (p.downPct >= 1),
+            byRet,
           });
         }
+    });
     return out;
-  }, [p, custom, X, cmp, multiEm, multiFin]);
+  }, [p, custom, X, cmp]);
 
-  const data = (series[0]?.rows ?? []).map((r, i) => {
-    const d: Record<string, number> = { year: NOW + r.sellYear, held: r.held };
-    for (const s of series) d[s.key] = real ? s.rows[i].advantageReal : s.rows[i].advantage;
-    return d;
-  });
+  const v = (r: SellRow) => (real ? r.advantageReal : r.advantage);
+  const all = series.flatMap((s) => retKeys.flatMap((r) => s.byRet[r].map(v)));
+  const lo = Math.min(0, ...all);
+  const ticks = niceTicks(lo, Math.max(0, ...all)).filter((t) => t >= lo || t === 0);
+  const yDomain = [Math.min(lo * 1.1, ticks[0]), ticks[ticks.length - 1]];
+  const breakEven = (rows: SellRow[]) => {
+    const i = rows.findIndex((_, j) => rows.slice(j).every((x) => x.advantage > 0));
+    return i < 0 ? null : rows[i].held;
+  };
 
-  const Box = ({ on, label, onClick, swatch, dash }: { on: boolean; label: string; onClick: () => void; swatch?: string; dash?: string }) => (
+  const Box = ({ on, label, onClick, dash }: { on: boolean; label: string; onClick: () => void; dash?: string }) => (
     <label className={on ? 'cbx on' : 'cbx'}>
       <input type="checkbox" checked={on} onChange={onClick} />
-      {swatch && <span className="sw" style={{ background: swatch }} />}
       {dash !== undefined && (
         <svg width="22" height="8" className="dashsw"><line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" strokeWidth="2" strokeDasharray={dash || undefined} /></svg>
       )}
@@ -235,12 +270,20 @@ function PresetCompare({
     <>
       <div className="cmp">
         <div className="cmp-g">
-          <div className="cmp-h">Market</div>
+          <div className="cmp-h">Price trend (optimistic to pessimistic)</div>
+          {['in', ...TRENDS.map(String)].map((k) => (
+            <Box key={k} on={cmp.g.includes(k)} label={trendLabel(k)} onClick={() => toggle('g', k)} />
+          ))}
+          <div className="cmp-h">Market cycle</div>
           {scenarios.map((x) => (
-            <Box key={x.key} on={cmp.sc.includes(x.key)} label={x.label} swatch={SC_COLOR[x.key]} onClick={() => toggle('sc', x.key)} />
+            <Box key={x.key} on={cmp.sc.includes(x.key)} label={x.label} onClick={() => toggle('sc', x.key)} />
           ))}
         </div>
         <div className="cmp-g">
+          <div className="cmp-h">Investment return (one panel each)</div>
+          {['in', ...RETURNS.map(String)].map((k) => (
+            <Box key={k} on={cmp.r.includes(k)} label={k === 'in' ? `Your input, ${pct(p.investReturn)}/yr` : `${pct(Number(k))}/yr`} onClick={() => toggle('r', k)} />
+          ))}
           <div className="cmp-h">Emirate fees</div>
           {(['DXB', 'AUH'] as Emirate[]).map((e) => (
             <Box key={e} on={cmp.em.includes(e)} label={EM_LABEL[e]} dash={DASH[`${e}-loan`] ?? ''} onClick={() => toggle('em', e)} />
@@ -251,64 +294,87 @@ function PresetCompare({
           ))}
         </div>
       </div>
-      {series.length === 0 ? (
+      {tooMany && <p className="warn small">Colours are capped at 8 trend × cycle combinations; untick some to see the rest.</p>}
+      {series.length === 0 || retKeys.length === 0 ? (
         <p className="muted">Tick at least one box in each group.</p>
       ) : (
-        <div className="chart">
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="var(--grid)" />
-              <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={14} />
-              <YAxis tickFormatter={(v) => abbr(v)} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={62} tickLine={false} axisLine={false} />
-              <ReferenceLine y={0} stroke="var(--axis)" strokeWidth={1.5} />
-              <Tooltip
-                cursor={{ stroke: 'var(--axis)', strokeDasharray: '3 3' }}
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const d = payload[0].payload as Record<string, number>;
-                  const sorted = [...series].sort((a, b) => d[b.key] - d[a.key]);
-                  return (
-                    <div className="tip">
-                      <div className="tip-t">Sell in {d.year} (held {d.held}y)</div>
-                      {sorted.map((s) => (
-                        <div key={s.key} className="tip-row">
-                          <span className="sw" style={{ background: s.color }} />
-                          <span className="tip-n">{s.name}</span>
-                          <span className={d[s.key] >= 0 ? 'c-buy' : 'c-rent'}>{d[s.key] >= 0 ? '+' : ''}{abbr(d[s.key])}</span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                }}
-              />
-              {series.map((s) => (
-                <Line
-                  key={s.key}
-                  dataKey={s.key}
-                  name={s.name}
-                  stroke={s.color}
-                  strokeWidth={s.mine ? 3 : 2}
-                  strokeDasharray={s.dash}
-                  dot={false}
-                  activeDot={{ r: 4, stroke: 'var(--panel)', strokeWidth: 2 }}
-                  isAnimationActive={false}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+        <>
           <div className="cmp-legend">
-            {series.map((s) => {
-              const be = s.rows.findIndex((r, i) => s.rows.slice(i).every((x) => x.advantage > 0));
+            {series.map((s) => (
+              <div key={s.key} className="cmp-li">
+                <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke={s.color} strokeWidth={s.mine ? 3 : 2} strokeDasharray={s.dash} /></svg>
+                <span>{s.name}</span>
+              </div>
+            ))}
+          </div>
+          <div className={retKeys.length > 1 ? 'panels multi' : 'panels'}>
+            {retKeys.map((r) => {
+              const data = series[0].byRet[r].map((row, i) => {
+                const d: Record<string, number> = { year: NOW + row.sellYear, held: row.held };
+                for (const s of series) d[s.key] = v(s.byRet[r][i]);
+                return d;
+              });
               return (
-                <div key={s.key} className="cmp-li">
-                  <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke={s.color} strokeWidth={s.mine ? 3 : 2} strokeDasharray={s.dash} /></svg>
-                  <span>{s.name}</span>
-                  <span className="muted">{be < 0 ? 'never breaks even' : `breaks even after ${s.rows[be].held}y`}</span>
+                <div className="panel" key={r}>
+                  <div className="panel-t">Investments earn {retLabel(r)}/yr</div>
+                  <ResponsiveContainer width="100%" height={retKeys.length > 1 ? 220 : 300}>
+                    <LineChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid vertical={false} stroke="var(--grid)" />
+                      <XAxis dataKey="year" tick={{ fill: 'var(--muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={14} />
+                      <YAxis domain={yDomain} ticks={ticks} tickFormatter={(x) => abbr(x)} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={56} tickLine={false} axisLine={false} />
+                      <ReferenceLine y={0} stroke="var(--axis)" strokeWidth={1.5} />
+                      <Tooltip
+                        cursor={{ stroke: 'var(--axis)', strokeDasharray: '3 3' }}
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0].payload as Record<string, number>;
+                          const sorted = [...series].sort((a, b) => d[b.key] - d[a.key]);
+                          return (
+                            <div className="tip">
+                              <div className="tip-t">Sell in {d.year} (held {d.held}y), invest at {retLabel(r)}</div>
+                              {sorted.map((s) => (
+                                <div key={s.key} className="tip-row">
+                                  <span className="sw" style={{ background: s.color }} />
+                                  <span className="tip-n">{s.name}</span>
+                                  <span className={d[s.key] >= 0 ? 'c-buy' : 'c-rent'}>{d[s.key] >= 0 ? '+' : ''}{abbr(d[s.key])}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }}
+                      />
+                      {series.map((s) => (
+                        <Line key={s.key} dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={s.mine ? 3 : 2}
+                          strokeDasharray={s.dash} dot={false} activeDot={{ r: 4, stroke: 'var(--panel)', strokeWidth: 2 }} isAnimationActive={false} />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               );
             })}
           </div>
-        </div>
+          <div className="table-wrap">
+            <table className="grid be-table">
+              <thead>
+                <tr>
+                  <th>Break-even holding period</th>
+                  {retKeys.map((r) => <th key={r}>invest {retLabel(r)}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {series.map((s) => (
+                  <tr key={s.key}>
+                    <td><span className="sw" style={{ background: s.color }} /> {s.name}</td>
+                    {retKeys.map((r) => {
+                      const b = breakEven(s.byRet[r]);
+                      return <td key={r} className={b == null ? 'c-rent' : 'c-buy'}>{b == null ? 'never' : `${b}y`}</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </>
   );
@@ -638,7 +704,7 @@ function Inputs({ s, setS, set }: { s: AppState; setS: (f: (o: AppState) => AppS
           kind="pct"
           value={p.varRate}
           onChange={(v) => set({ varRate: v })}
-          hint="Typically 3-month EIBOR + 1.5 to 2%"
+          hint="3-month EIBOR (4.2% in Sept 2026) + about 1.75%"
         />
         <Num label="Mortgage term" kind="yrs" value={p.term} onChange={(v) => set({ term: v })} hint="Max 25 years, must end by age 65 for most expats" />
       </Group>
