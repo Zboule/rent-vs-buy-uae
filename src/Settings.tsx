@@ -5,7 +5,7 @@ import {
   type Config, type FieldDef, type Kind, type LineCount,
 } from './config';
 import type { Encoding } from './encoding';
-import { COLORS } from './encoding';
+import { COLORS, shade } from './encoding';
 import { Chevron, PlusIcon, Sheet, Swatch, fmtValue, parseOne, toInput } from './ui';
 
 type SetC = (f: (o: Config) => Config) => void;
@@ -61,13 +61,23 @@ export function Stepper({ value, onChange, min = 0, max = 99, step = 1, fmt, lab
 
 interface SheetState { key: string; mode: 'add' | 'edit'; value?: number }
 
-function Chip({ label, color, dash, onClick }: { label: string; color?: string | null; dash?: string | null; onClick: () => void }) {
+function Chip({ label, color, dash, shadePct, onClick, onRemove }: {
+  label: string; color?: string | null; dash?: string | null; shadePct?: number | null; onClick: () => void; onRemove?: () => void;
+}) {
   return (
-    <button className="vchip" onClick={onClick}>
-      {color && <span className="dot" style={{ background: color }} />}
-      {dash != null && !color && <Swatch color="currentColor" dash={dash} w={18} width={2} />}
-      {label}
-    </button>
+    <span className={onRemove ? 'vchip rm' : 'vchip'}>
+      <button className="vchip-b" onClick={onClick}>
+        {color && <span className="dot" style={{ background: color }} />}
+        {dash != null && !color && <Swatch color="var(--label)" dash={dash} w={18} width={2} />}
+        {shadePct != null && !color && dash == null && <Swatch color={shade('var(--label)', shadePct)} w={18} width={3} />}
+        {label}
+      </button>
+      {onRemove && (
+        <button className="vchip-x" onClick={onRemove} aria-label={`Remove ${label}`}>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -99,13 +109,21 @@ function OptionRow({ f, c, setC, enc, openSheet, note, disabled }: {
         {control}
         <button className="plus" disabled={disabled} onClick={() => openSheet({ key: f.key, mode: 'add' })} aria-label={`Compare values for ${f.label}`}>
           <PlusIcon />
-          <span className="plus-t">Compare</span>
+          <span className="plus-t">{many ? 'Add' : 'Compare'}</span>
         </button>
       </div>
       {many && (
         <div className="chips">
           {values.map((v) => (
-            <Chip key={v} label={fmtValue(f, v)} color={enc.colorOf(f.key, v)} dash={enc.dashOf(f.key, v)} onClick={() => openSheet({ key: f.key, mode: 'edit', value: v })} />
+            <Chip
+              key={v}
+              label={fmtValue(f, v)}
+              color={enc.colorOf(f.key, v)}
+              dash={enc.dashOf(f.key, v)}
+              shadePct={enc.shadeOf(f.key, v)}
+              onClick={() => openSheet({ key: f.key, mode: 'edit', value: v })}
+              onRemove={disabled ? undefined : () => setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: o.lists[f.key].filter((x) => x !== v) } }))}
+            />
           ))}
         </div>
       )}
@@ -149,7 +167,7 @@ function ValueSheet({ s, c, setC, onClose }: { s: SheetState | null; c: Config; 
             <button className="btn danger" onClick={remove}>Remove this value</button>
           )}
           <button className="btn primary" disabled={!valid} onClick={apply}>
-            {s.mode === 'add' ? (valid ? `Add · ${now} → ${Math.min(next, MAX_LINES)} lines` : 'Pick or type a value') : 'Save'}
+            {s.mode === 'add' ? (valid ? `Add ${fmtValue(f, v!)} · ${now} → ${Math.min(next, MAX_LINES)} lines` : 'Pick or type a value') : 'Save'}
           </button>
         </div>
       }
@@ -203,16 +221,17 @@ const cum = (p: number[], n: number) => p.slice(0, n).reduce((v, g) => v * (1 + 
 const pctS = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(Math.round(x * 100))}%`;
 
 function Sparkline({ path, color }: { path: number[]; color: string }) {
-  const W = 120, H = 34;
+  const W = 132, H = 40;
   const idx = [1];
   for (const g of path) idx.push(idx[idx.length - 1] * (1 + g));
   const lo = Math.min(0.5, ...idx), hi = Math.max(1.6, ...idx);
-  const x = (i: number) => (i / (idx.length - 1)) * (W - 4) + 2;
+  const x = (i: number) => (i / (idx.length - 1)) * (W - 6) + 2;
   const y = (v: number) => H - 3 - ((v - lo) / (hi - lo)) * (H - 6);
   return (
     <svg width={W} height={H} className="spark" aria-hidden>
       <line x1="2" x2={W - 2} y1={y(1)} y2={y(1)} className="spark-base" />
       <polyline points={idx.map((v, i) => `${x(i)},${y(v)}`).join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={x(idx.length - 1)} cy={y(idx[idx.length - 1])} r="2.5" fill={color} />
     </svg>
   );
 }
@@ -249,7 +268,12 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
                   <span className="scard-name">{on && <span className="dot" style={{ background: color }} />}{sc.label}</span>
                   <span className="scard-note">{sc.note}</span>
                 </span>
-                {!trend && <Sparkline path={path} color={on ? color : 'var(--label3)'} />}
+                {!trend && (
+                  <span className="spark-wrap">
+                    <Sparkline path={path} color={on ? color : 'var(--label3)'} />
+                    <span className="spark-l">{pctS(cum(path, years))}<small> in {years}y</small></span>
+                  </span>
+                )}
               </button>
               {!trend && (
                 <div className="scard-body">
@@ -393,7 +417,13 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
           </div>
           <div className="chips">
             {selectedScen.map((x) => (
-              <Chip key={x.key} label={x.label.split(':')[0]} color={enc.colorOf('cycle', x.key)} onClick={() => setScen(true)} />
+              <Chip
+                key={x.key}
+                label={x.label.split(':')[0]}
+                color={enc.colorOf('cycle', x.key)}
+                onClick={() => setScen(true)}
+                onRemove={selectedScen.length > 1 ? () => setC((o) => ({ ...o, cycles: o.cycles.filter((k) => k !== x.key) })) : undefined}
+              />
             ))}
           </div>
         </div>
@@ -439,13 +469,13 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
           {matches.length ? matches.map(row) : <p className="empty">No option matches “{query}”</p>}
         </div>
       ) : (
-        <>
+        <div className="group">
           {GROUPS.map((g) => {
             const fs = more.filter((f) => f.group === g);
             const nVar = fs.filter((f) => c.lists[f.key].length > 1).length;
             const open = openGroups[g] ?? nVar > 0;
             return (
-              <div key={g} className="group collapsible">
+              <div key={g} className="collapsible">
                 <button className="group-head" onClick={() => setOpenGroups((o) => ({ ...o, [g]: !open }))} aria-expanded={open}>
                   <span className="gh-t">{g}</span>
                   <span className="gh-s">{fs.length} option{fs.length > 1 ? 's' : ''}{nVar ? ` · ${nVar} compared` : ''}</span>
@@ -456,7 +486,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
             );
           })}
           <EmirateFees c={c} setC={setC} open={openGroups.fees ?? false} toggle={() => setOpenGroups((o) => ({ ...o, fees: !(o.fees ?? false) }))} />
-        </>
+        </div>
       )}
 
       <details className="counted">
@@ -484,7 +514,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
 
 function EmirateFees({ c, setC, open, toggle }: { c: Config; setC: SetC; open: boolean; toggle: () => void }) {
   return (
-    <div className="group collapsible">
+    <div className="collapsible">
       <button className="group-head" onClick={toggle} aria-expanded={open}>
         <span className="gh-t">Fees by emirate</span>
         <span className="gh-s">{c.emirates.map((e) => EM_LABEL[e]).join(' + ')}</span>

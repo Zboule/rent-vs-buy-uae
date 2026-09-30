@@ -339,3 +339,58 @@ export function writeConfig(c: Config) {
   const h = q.toString();
   history.replaceState(null, '', h ? `#${h}` : location.pathname);
 }
+
+/* ---------------------------------------------------------------- plain-language count */
+
+const LOAN_OPTS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'valuation', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
+const TREND_OPTS = ['priceGrowth', 'investReturn'];
+const pcts = (vs: number[]) => vs.map((v) => `${+(v * 100).toFixed(2)}%`);
+const orList = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
+
+/**
+ * "7 scenarios × 3 ways to buy": the factors that multiply into the line count, merging the
+ * options that only apply to some lines (loan options only to mortgage buyers, trend options only
+ * to the Constant trend scenario) so the numbers multiply exactly.
+ */
+export function describeCount(c: Config, cnt: LineCount): { factors: string[]; detail: string | null; skipped: number } {
+  const vary = new Set(cnt.varying.map((d) => d.key));
+  const factors: string[] = [];
+  let detail: string | null = null;
+  let product = 1;
+
+  // scenarios (with the trend's own options folded in)
+  const trendVar = TREND_OPTS.filter((k) => vary.has(k));
+  const hasTrend = c.cycles.includes('trend');
+  const nScen = hasTrend && trendVar.length ? c.cycles.length - 1 + trendVar.reduce((n, k) => n * c.lists[k].length, 1) : c.cycles.length;
+  if (nScen > 1) factors.push(`${nScen} scenarios`);
+  product *= nScen;
+
+  // ways to buy: down payments × loan options, where cash has no loan
+  const loanVar = LOAN_OPTS.filter((k) => vary.has(k));
+  const downs = c.lists.downPct;
+  const cash = downs.filter((v) => v >= 1).length;
+  const loanDowns = downs.filter((v) => v < 1);
+  const loanCombos = loanVar.reduce((n, k) => n * c.lists[k].length, 1);
+  const ways = loanDowns.length * loanCombos + cash;
+  if (ways > 1) {
+    factors.push(`${ways} ways to buy`);
+    if (loanVar.length || cash) {
+      const parts: string[] = [];
+      if (loanDowns.length) {
+        const loanTxt = loanVar.map((k) => `${orList(FIELD[k].kind === 'pct' ? pcts(c.lists[k]) : c.lists[k].map(String))} ${FIELD[k].noun?.replace(/s$/, '') ?? ''}`.trim());
+        parts.push(`${orList(pcts(loanDowns))} down${loanTxt.length ? ` at ${loanTxt.join(' and ')}` : ''}`);
+      }
+      if (cash) parts.push('cash');
+      detail = parts.join(', or ');
+    }
+  }
+  product *= ways;
+
+  // everything else multiplies plainly
+  for (const d of cnt.varying) {
+    if (d.key === 'cycle' || d.key === 'downPct' || LOAN_OPTS.includes(d.key) || TREND_OPTS.includes(d.key)) continue;
+    factors.push(`${d.values.length} ${d.noun}`);
+    product *= d.values.length;
+  }
+  return { factors, detail, skipped: Math.max(0, product - cnt.total) };
+}

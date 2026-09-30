@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { breakEvenOf } from './engine';
-import { FIELD, MAX_LINES, NOW, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
+import { CYCLES, MAX_LINES, NOW, describeCount, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
 import { encoding, type Encoding } from './encoding';
-import { Settings, useCount } from './Settings';
-import { Swatch, fmtValue, useVisualViewport } from './ui';
+import { Settings, Stepper, useCount } from './Settings';
+import { Sheet, Swatch, useVisualViewport } from './ui';
 import { abbr } from './format';
+
+type SetC = (f: (o: Config) => Config) => void;
 
 export default function App() {
   const [c, setC] = useState<Config>(readConfig);
@@ -14,15 +16,25 @@ export default function App() {
   const res = useMemo(() => lines(c), [c]);
   const cnt = useCount(c);
   const enc = useMemo(() => encoding(cnt.varying), [cnt.varying]);
+
+  // which part of the page is on screen, for the phone's bottom bar
   const chartRef = useRef<HTMLDivElement>(null);
   const [chartVisible, setChartVisible] = useState(true);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   useEffect(() => {
-    const el = chartRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([e]) => setChartVisible(e.isIntersecting), { threshold: 0.05 });
-    io.observe(el);
+    const chart = chartRef.current;
+    const settings = document.getElementById('settings');
+    if (!chart || !settings) return;
+    const io = new IntersectionObserver(
+      (es) => es.forEach((e) => (e.target === chart ? setChartVisible(e.isIntersecting) : setSettingsVisible(e.isIntersecting))),
+      { threshold: 0.02 },
+    );
+    io.observe(chart);
+    io.observe(settings);
     return () => io.disconnect();
   }, []);
+  const toSettings = () => document.getElementById('settings')?.scrollIntoView({ behavior: 'smooth' });
+  const toChart = () => chartRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   return (
     <div className="app">
@@ -33,8 +45,7 @@ export default function App() {
       <div className="layout">
         <main className="main">
           <div ref={chartRef} className="card chart-card">
-            <Equation cnt={cnt} onTap={() => document.getElementById('settings')?.scrollIntoView({ behavior: 'smooth' })} />
-            <Graph c={c} setC={setC} lines={res.lines} enc={enc} />
+            <Graph c={c} setC={setC} lines={res.lines} enc={enc} cnt={cnt} onCount={toSettings} />
           </div>
         </main>
         <aside className="side">
@@ -44,11 +55,17 @@ export default function App() {
       <footer className="foot">
         Not financial advice. 2026 estimates, every value editable. <a href="https://github.com/Zboule/rent-vs-buy-uae">How it works</a>
       </footer>
-      {!chartVisible && (
-        <button className="pill" onClick={() => chartRef.current?.scrollIntoView({ behavior: 'smooth' })}>
-          {cnt.total} line{cnt.total === 1 ? '' : 's'} · See graph ↑
-        </button>
-      )}
+      <div className="bottombar" aria-hidden={false}>
+        {settingsVisible && !chartVisible ? (
+          <button className="bb" onClick={toChart}>
+            {cnt.total} line{cnt.total === 1 ? '' : 's'} · Back to graph <span aria-hidden>↑</span>
+          </button>
+        ) : !settingsVisible ? (
+          <button className="bb" onClick={toSettings}>
+            Your assumptions{cnt.varying.length ? ` · ${cnt.varying.length} compared` : ''} <span aria-hidden>›</span>
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -79,33 +96,7 @@ function ShareButton() {
   );
 }
 
-/* ------------------------------------------------------------------ equation */
-
-function Equation({ cnt, onTap }: { cnt: LineCount; onTap: () => void }) {
-  const d = cnt.dropped;
-  const drops = d.cash + d.trend + d.other;
-  const parts = cnt.varying.map((v) => `${v.values.length} ${v.noun}`);
-  let sub: string;
-  if (!parts.length) sub = 'Tap + on any option to compare values';
-  else {
-    sub = parts.join(' × ');
-    if (drops) {
-      const why = d.cash >= d.trend && d.cash >= d.other ? 'cash buyer repeats (no mortgage)' : d.trend >= d.other ? 'repeats (only Constant trend uses this)' : 'repeats (option not used)';
-      sub += ` = ${cnt.product}, minus ${drops} ${why}`;
-    }
-  }
-  const over = cnt.total > MAX_LINES;
-  return (
-    <button className="equation" onClick={onTap}>
-      <span className={over ? 'eq-n warn' : 'eq-n'}>
-        {over ? `${MAX_LINES} of ${cnt.total} lines shown` : `${cnt.total} line${cnt.total === 1 ? '' : 's'}`}
-      </span>
-      <span className="eq-s">{over ? 'Remove a value to see them all' : sub}</span>
-    </button>
-  );
-}
-
-/* ------------------------------------------------------------------ graph + readout */
+/* ------------------------------------------------------------------ helpers */
 
 function niceTicks(lo: number, hi: number, target = 5): number[] {
   const raw = Math.max(1, hi - lo) / target;
@@ -116,26 +107,32 @@ function niceTicks(lo: number, hi: number, target = 5): number[] {
   return out;
 }
 
+/** 2000000 -> "2M", 1500000 -> "1.5M", 250000 -> "250k" (no trailing zeros) */
+const compact = (a: number) =>
+  a >= 1e6 ? `${+(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${Math.round(a / 1e3)}k` : String(Math.round(a));
+const signed = (v: number) => (Math.round(v) === 0 ? '0' : `${v > 0 ? '+' : '−'}${compact(Math.abs(v))}`);
+const shortScenario = (key: string) => CYCLES.find((x) => x.key === key)?.label.split(':')[0] ?? key;
+
 interface Styled extends LineDef { color: string; dash: string }
 
-const CHART_H = 300;
-const PLOT_TOP = 8;
-const PLOT_BOTTOM = CHART_H - 30; // x axis height
+const CHART_H = 290;
+const PLOT_TOP = 10;
+const PLOT_BOTTOM = CHART_H - 28;
+const PRESETS = [3, 6, 10, 15, 25];
+const COLLAPSED = 10;
 
-function Graph({ c, setC, lines: ls, enc }: { c: Config; setC: (f: (o: Config) => Config) => void; lines: LineDef[]; enc: Encoding }) {
-  const order = [enc.colorKey, enc.dashKey];
-  const styled: Styled[] = ls.map((l) => ({
-    ...l,
-    ...enc.line(l.combo),
-    name:
-      [...order.filter((k) => k && l.parts[k]).map((k) => l.parts[k]), ...Object.keys(l.parts).filter((k) => !order.includes(k)).map((k) => l.parts[k])].join(' · ') ||
-      'Your assumptions',
-  }));
+/* ------------------------------------------------------------------ graph */
 
+function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
+  c: Config; setC: SetC; lines: LineDef[]; enc: Encoding; cnt: LineCount; onCount: () => void;
+}) {
+  const styled: Styled[] = ls.map((l) => ({ ...l, ...enc.line(l.combo) }));
   const [fk, fv] = c.focus ? c.focus.split(':') : [null, null];
   const inFocus = (l: Styled) => !fk || String(l.combo[fk]) === fv;
   const [pinned, setPinned] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [customHz, setCustomHz] = useState(false);
   const active = pinned ?? hover;
 
   const buys = c.lists.buyYear;
@@ -152,7 +149,6 @@ function Graph({ c, setC, lines: ls, enc }: { c: Config; setC: (f: (o: Config) =
     for (const l of styled) d[l.id] = valueAt(l, year) ?? null;
     return d;
   });
-
   const visible = styled.filter(inFocus);
   const vals = visible.flatMap((l) => l.rows.map((r) => r.advantage));
   const ticks = niceTicks(Math.min(0, ...vals), Math.max(0, ...vals));
@@ -163,73 +159,105 @@ function Graph({ c, setC, lines: ls, enc }: { c: Config; setC: (f: (o: Config) =
     if (!e || e.activeLabel == null) return;
     const year = Number(e.activeLabel);
     setSell(year);
-    if (e.chartY != null) {
-      const v = y1 - ((e.chartY - PLOT_TOP) / (PLOT_BOTTOM - PLOT_TOP)) * (y1 - y0);
-      let best: Styled | null = null;
-      let bd = Infinity;
-      for (const l of visible) {
-        const a = valueAt(l, year);
-        if (a != null && Math.abs(a - v) < bd) { bd = Math.abs(a - v); best = l; }
-      }
-      if (pick) setPinned(best && best.id !== pinned ? best.id : null);
-      else setHover(best?.id ?? null);
+    if (e.chartY == null) return;
+    const v = y1 - ((e.chartY - PLOT_TOP) / (PLOT_BOTTOM - PLOT_TOP)) * (y1 - y0);
+    let best: Styled | null = null;
+    let bd = Infinity;
+    for (const l of visible) {
+      const a = valueAt(l, year);
+      if (a != null && Math.abs(a - v) < bd) { bd = Math.abs(a - v); best = l; }
     }
+    if (pick) setPinned(best && best.id !== pinned ? best.id : null);
+    else setHover(best?.id ?? null);
   };
-
-  const rows = visible
-    .map((l) => ({ l, r: l.rows.find((x) => NOW + x.sellYear === sellYear) }))
-    .filter((x) => x.r)
-    .sort((a, b) => b.r!.advantage - a.r!.advantage);
 
   if (!styled.length) return <p className="empty">Nothing to draw. Tick at least one scenario and one emirate.</p>;
 
+  const atSell = visible.map((l) => ({ l, a: valueAt(l, sellYear) })).filter((x): x is { l: Styled; a: number } => x.a != null);
+  const wins = atSell.filter((x) => x.a > 0).length;
+  const desc = describeCount(c, cnt);
+  const over = cnt.total > MAX_LINES;
+
+  // headline: the answer, not the chart's anatomy
+  let headline: string;
+  if (atSell.length === 1) {
+    const a = atSell[0].a;
+    headline = Math.abs(a) < 1000 ? `About even if you sell in ${sellYear}` : `${a > 0 ? 'Buying' : 'Renting'} is cheaper by AED ${compact(Math.abs(a))} if you sell in ${sellYear}`;
+  } else if (wins === atSell.length) headline = `Buying wins in all ${atSell.length} cases by ${sellYear}`;
+  else if (wins === 0) headline = `Renting wins in all ${atSell.length} cases by ${sellYear}`;
+  else headline = `Buying wins in ${wins} of ${atSell.length} cases by ${sellYear}`;
+
+  // readout rows, grouped by scenario when the scenario and something else both vary
+  const group = enc.colorKey === 'cycle' && cnt.varying.length > 1;
+  const sorted = [...atSell].sort((a, b) => b.a - a.a);
+  const ordered = group
+    ? CYCLES.flatMap((s) => sorted.filter((x) => x.l.combo.cycle === s.key))
+    : sorted;
+  const shown = showAll || ordered.length <= COLLAPSED + 2 ? ordered : ordered.slice(0, COLLAPSED);
   const idx = years.indexOf(sellYear);
-  const tokenLabel = (key: string, value: string) =>
-    key === 'cycle' || key === 'emirate' ? styled.find((l) => String(l.combo[key]) === value)?.parts[key] ?? value : fmtValue(FIELD[key], Number(value));
+  const rank = (k: string) => {
+    const i = [enc.colorKey, enc.dashKey, enc.shadeKey].indexOf(k);
+    return i < 0 ? 9 : i;
+  };
+  const nameOf = (l: Styled, skipScenario: boolean) =>
+    Object.entries(l.parts)
+      .filter(([k]) => !(skipScenario && k === 'cycle'))
+      .sort(([a], [b]) => rank(a) - rank(b))
+      .map(([k, v]) => (k === 'cycle' ? v.split(':')[0] : v));
+  const isCustomHz = !PRESETS.includes(c.horizon);
 
   return (
     <>
-      <div className="horizon">
-        <span className="hz-l">Show</span>
-        <div className="hz-chips" role="radiogroup" aria-label="Years to show">
-          {[3, 6, 10, 15, 25].map((h) => (
-            <button key={h} role="radio" aria-checked={c.horizon === h} className={c.horizon === h ? 'hz on' : 'hz'} onClick={() => setC((o) => ({ ...o, horizon: h, sell: null }))}>
-              {h}y
-            </button>
-          ))}
-          <input
-            className="hz-in"
-            inputMode="numeric"
-            aria-label="Custom number of years"
-            value={c.horizon}
-            onChange={(e) => {
-              const n = Math.round(Number(e.target.value));
-              if (n >= 1 && n <= 35) setC((o) => ({ ...o, horizon: n, sell: null }));
-            }}
-          />
-        </div>
+      <div className="hero">
+        <h2 className="verdict-h">{headline}</h2>
+        <button className="count" onClick={onCount}>
+          <span className={over ? 'warn' : ''}>
+            {over ? `${MAX_LINES} of ${cnt.total} lines shown` : `${cnt.total} line${cnt.total === 1 ? '' : 's'}`}
+            {desc.factors.length > 0 && !over && `: ${desc.factors.join(' × ')}`}
+            {desc.skipped > 0 && !over && ` (${desc.skipped} repeats skipped)`}
+            {!desc.factors.length && ' · tap Compare on any option to add lines'}
+          </span>
+          <svg width="8" height="12" viewBox="0 0 8 12" aria-hidden className="count-chev"><path d="M2 2l4 4-4 4" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>
+        </button>
+        {desc.detail && <div className="count-detail">{desc.detail}</div>}
       </div>
 
+      <div className="seg-hz" role="radiogroup" aria-label="Years to show">
+        {PRESETS.map((h) => (
+          <button key={h} role="radio" aria-checked={c.horizon === h} className={c.horizon === h ? 'on' : ''} onClick={() => setC((o) => ({ ...o, horizon: h, sell: null }))}>
+            {h}y
+          </button>
+        ))}
+        <button role="radio" aria-checked={isCustomHz} className={isCustomHz ? 'on' : ''} onClick={() => setCustomHz(true)} aria-label="Custom number of years">
+          {isCustomHz ? `${c.horizon}y` : '…'}
+        </button>
+      </div>
+      <Sheet open={customHz} onClose={() => setCustomHz(false)} title="Years to show" subtitle="How far ahead the graph goes after buying.">
+        <div className="center-row">
+          <Stepper value={c.horizon} min={1} max={35} fmt={(v) => `${v} years`} label="Years to show" onChange={(v) => setC((o) => ({ ...o, horizon: v, sell: null }))} />
+        </div>
+      </Sheet>
+
       <div className="plot" onMouseLeave={() => setHover(null)}>
-        <div className="y-title">Renting cost minus buying cost, AED</div>
+        <div className="y-title">How much buying saves you, AED</div>
         <ResponsiveContainer width="100%" height={CHART_H}>
           <LineChart
             data={data}
-            margin={{ top: PLOT_TOP, right: 12, left: 0, bottom: 0 }}
+            margin={{ top: PLOT_TOP, right: 14, left: 0, bottom: 0 }}
             onMouseMove={(e) => onMove(e as never, false)}
             onClick={(e) => onMove(e as never, true)}
           >
-            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.07} ifOverflow="hidden" label={{ value: 'Buying cheaper', position: 'insideTopLeft', fill: 'var(--buy)', fontSize: 11, fontWeight: 600 }} />
-            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.08} ifOverflow="hidden" label={{ value: 'Renting cheaper', position: 'insideBottomLeft', fill: 'var(--rent)', fontSize: 11, fontWeight: 600 }} />
+            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.06} ifOverflow="hidden" label={{ value: 'Buying cheaper', position: 'insideTopLeft', fill: 'var(--buy)', fontSize: 11, fontWeight: 600 }} />
+            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.07} ifOverflow="hidden" label={{ value: 'Renting cheaper', position: 'insideBottomLeft', fill: 'var(--rent)', fontSize: 11, fontWeight: 600 }} />
             <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis dataKey="year" tick={{ fill: 'var(--label2)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={10} height={30} />
-            <YAxis domain={[y0, y1]} ticks={ticks} tickFormatter={(x) => abbr(x)} tick={{ fill: 'var(--label2)', fontSize: 11 }} width={50} tickLine={false} axisLine={false} allowDataOverflow />
+            <XAxis dataKey="year" tick={{ fill: 'var(--label2)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={8} height={28} />
+            <YAxis domain={[y0, y1]} ticks={ticks} tickFormatter={signed} tick={{ fill: 'var(--label2)', fontSize: 11 }} width={46} tickLine={false} axisLine={false} allowDataOverflow />
             <ReferenceLine y={0} stroke="var(--label3)" strokeWidth={1.5} />
             <ReferenceLine x={sellYear} stroke="var(--label2)" strokeDasharray="3 3" />
             {styled.map((l) => {
               const on = inFocus(l);
               const hi = active === l.id;
-              const op = !on ? 0.06 : active ? (hi ? 1 : 0.15) : 1;
+              const op = !on ? 0.06 : active ? (hi ? 1 : 0.14) : 1;
               return (
                 <Line
                   key={l.id}
@@ -238,7 +266,13 @@ function Graph({ c, setC, lines: ls, enc }: { c: Config; setC: (f: (o: Config) =
                   strokeWidth={hi ? 3.5 : 2.25}
                   strokeDasharray={l.dash || undefined}
                   strokeOpacity={op}
-                  dot={false}
+                  dot={(p: { cx?: number; cy?: number; payload?: { year: number }; index?: number }) =>
+                    on && p.payload?.year === sellYear && p.cx != null && p.cy != null && (!active || hi) ? (
+                      <circle key={`${l.id}-d`} cx={p.cx} cy={p.cy} r={hi ? 5 : 3.5} fill={l.color} stroke="var(--surface)" strokeWidth={1.5} />
+                    ) : (
+                      <g key={`${l.id}-${p.index}`} />
+                    )
+                  }
                   activeDot={false}
                   connectNulls={false}
                   isAnimationActive={false}
@@ -253,62 +287,66 @@ function Graph({ c, setC, lines: ls, enc }: { c: Config; setC: (f: (o: Config) =
       <div className="readout">
         <div className="ro-head">
           <button className="round" disabled={idx <= 0} onClick={() => setSell(years[idx - 1])} aria-label="Previous year">‹</button>
-          <div className="ro-title">
-            If you sell in <b>{sellYear}</b>
-          </div>
+          <div className="ro-title">If you sell in <b>{sellYear}</b></div>
           <button className="round" disabled={idx >= years.length - 1} onClick={() => setSell(years[idx + 1])} aria-label="Next year">›</button>
         </div>
         {fk && (
           <div className="focus-pill">
             <button onClick={() => setC((o) => ({ ...o, focus: null }))}>
-              Only: {tokenLabel(fk, fv!)} <span aria-hidden>×</span>
+              Only {fk === 'cycle' ? shortScenario(fv!) : fv} <span aria-hidden>×</span>
             </button>
           </div>
         )}
         <ul className="ro-list">
-          {rows.map(({ l, r }) => {
-            const a = r!.advantage;
+          {shown.map(({ l, a }, i) => {
+            const prev = shown[i - 1];
+            const header = group && (!prev || prev.l.combo.cycle !== l.combo.cycle);
             const be = breakEvenOf(l.rows, (x) => x.advantage);
             const even = Math.abs(a) < (l.combo.price as number) * 0.01;
             const hi = active === l.id;
-            const tokens = [enc.colorKey, enc.dashKey, ...Object.keys(l.parts)].filter((k, i, arr) => k && l.parts[k] && arr.indexOf(k) === i);
+            const tokens = nameOf(l, group);
+            const title = tokens[0] ?? 'Your assumptions';
+            const rest = tokens.slice(1);
+            const sc = String(l.combo.cycle);
             return (
-              <li key={l.id} id={`row-${l.id}`} className={hi ? 'ro hi' : active ? 'ro dim' : 'ro'}>
-                <button className="ro-hit" onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id} aria-label={`Highlight ${l.name}`} />
-                <Swatch color={l.color} dash={l.dash} w={22} width={3} />
-                <div className="ro-mid">
-                  <div className="ro-name">
-                    {tokens.length ? (
-                      tokens.map((k) => (
-                        <button
-                          key={k}
-                          className="tok"
-                          onClick={() => setC((o) => ({ ...o, focus: o.focus === `${k}:${l.combo[k]}` ? null : `${k}:${l.combo[k]}` }))}
-                        >
-                          {l.parts[k]}
-                        </button>
-                      ))
-                    ) : (
-                      <span>{l.name}</span>
+              <li key={l.id} className="ro-li">
+                {header && (
+                  <button
+                    className="ro-group"
+                    onClick={() => setC((o) => ({ ...o, focus: o.focus === `cycle:${sc}` ? null : `cycle:${sc}` }))}
+                    aria-pressed={c.focus === `cycle:${sc}`}
+                  >
+                    <span className="dot" style={{ background: enc.colorOf('cycle', sc) ?? 'var(--label3)' }} />
+                    {shortScenario(sc)}
+                    <span className="ro-group-hint">{c.focus === `cycle:${sc}` ? 'Show all' : 'Show only'}</span>
+                  </button>
+                )}
+                <button className={hi ? 'ro hi' : active ? 'ro dim' : 'ro'} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
+                  <Swatch color={l.color} dash={l.dash} w={22} width={3} />
+                  <span className="ro-mid">
+                    <span className="ro-name">{title}</span>
+                    <span className="ro-sub">
+                      {rest.map((t) => <span key={t}>{t}</span>)}
+                      <span className="ro-be">{be != null ? `Buying wins after ${be} year${be === 1 ? '' : 's'}` : `Not within ${l.rows.length} years`}</span>
+                    </span>
+                    {hi && (
+                      <span className="ro-extra">
+                        {l.paymentYear > 0 ? `Mortgage AED ${abbr(l.paymentYear)} vs rent AED ${abbr(l.rentYear)} in year 1` : `Cash purchase, rent AED ${abbr(l.rentYear)} in year 1`}
+                      </span>
                     )}
-                  </div>
-                  <div className="ro-cap">
-                    {be != null ? `Buying wins after ${be} year${be === 1 ? '' : 's'}` : `Not within ${l.rows.length} years`}
-                    {' · '}
-                    {l.paymentYear > 0 ? `Mortgage ${abbr(l.paymentYear)} vs rent ${abbr(l.rentYear)} in year 1` : `Cash purchase, rent ${abbr(l.rentYear)} in year 1`}
-                  </div>
-                </div>
-                <div className="ro-val">
-                  <span className={even ? 'amt' : a >= 0 ? 'amt buy' : 'amt rent'}>
-                    {a >= 0 ? '+' : '−'}
-                    {abbr(Math.abs(a))}
                   </span>
-                  <span className="verdict">{even ? 'about even' : a >= 0 ? 'buying cheaper' : 'renting cheaper'}</span>
-                </div>
+                  <span className="ro-val">
+                    <span className={even ? 'amt' : a >= 0 ? 'amt buy' : 'amt rent'}>{even ? '≈0' : signed(a)}</span>
+                    <span className="verdict">{even ? 'about even' : a >= 0 ? 'buying cheaper' : 'renting cheaper'}</span>
+                  </span>
+                </button>
               </li>
             );
           })}
         </ul>
+        {shown.length < ordered.length && (
+          <button className="btn plain showall" onClick={() => setShowAll(true)}>Show all {ordered.length}</button>
+        )}
       </div>
     </>
   );
