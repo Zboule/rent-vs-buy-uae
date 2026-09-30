@@ -103,7 +103,7 @@ export const DEFAULT_CONFIG: Config = {
   emFees: Object.fromEntries(
     EMIRATES.map((e) => [e, Object.fromEntries(EM_FIELDS.map((f) => [f.key, ({ ...P, ...PRESETS[e] } as Record<string, number>)[f.key]]))]),
   ) as Record<Emirate, Record<string, number>>,
-  horizon: 15,
+  horizon: 10,
   colorBy: 'priceGrowth',
   styleBy: 'investReturn',
   widthBy: 'downPct',

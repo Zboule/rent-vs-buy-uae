@@ -157,6 +157,14 @@ function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) =
           {styled.length} line{styled.length > 1 ? 's' : ''}
         </h2>
         {res.total > MAX_LINES && <span className="warn small">showing the first {MAX_LINES} of {res.total} combinations</span>}
+        <div className="horizon" role="radiogroup" aria-label="Horizon">
+          <span className="muted small">Next</span>
+          {[5, 10, 15, 20, 25].map((h) => (
+            <button key={h} className={c.horizon === h ? 'chip on' : 'chip'} onClick={() => setC((o) => ({ ...o, horizon: h }))}>
+              {h}y
+            </button>
+          ))}
+        </div>
       </div>
 
       {varying.length > 0 && (
@@ -372,22 +380,6 @@ function ConfigForm({ c, setC, total }: { c: Config; setC: (f: (o: Config) => Co
             {FIELDS.filter((f) => f.group === g).map((f) => (
               <ListField key={f.key} label={f.label} hint={f.hint} kind={f.kind} values={c.lists[f.key]} onChange={(v) => setList(f.key, v)} />
             ))}
-            {g === 'Timing' && (
-              <label className="field">
-                <span className="field-l">Show sell years up to</span>
-                <span className="field-in">
-                  <input
-                    inputMode="numeric"
-                    defaultValue={c.horizon}
-                    onChange={(e) => {
-                      const n = Math.round(Number(e.target.value));
-                      if (n >= 1 && n <= 35) setC((o) => ({ ...o, horizon: n }));
-                    }}
-                  />
-                  <span className="unit">yrs held</span>
-                </span>
-              </label>
-            )}
             {g === 'Market' && (
               <div className="span2">
                 <Checks<ScenarioKey>

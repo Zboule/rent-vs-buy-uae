@@ -224,3 +224,5 @@ h2 { font-size: 1.02rem; margin: 0 0 4px; letter-spacing: -0.01em; }
 .em-col { display: flex; flex-direction: column; gap: 8px; }
 .em-h { font-weight: 600; font-size: 0.85rem; }
 .notes p { font-size: 0.82rem; color: var(--text2); margin: 6px 0; }
+.horizon { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.horizon .chip { padding: 4px 10px; font-size: 0.8rem; }
