@@ -1,4 +1,4 @@
-import { DEFAULTS, PRESETS, type Emirate, type Measure, type Params, type ScenarioKey } from './engine';
+import { DEFAULTS, PRESETS, type Emirate, type Params, type ScenarioKey } from './engine';
 
 export type Financing = 'loan' | 'cash';
 export interface Compare {
@@ -18,7 +18,6 @@ export interface AppState {
   custom: number[]; // per-year price growth for the custom scenario
   buyYear: number;
   real: boolean; // show today's money
-  measure: Measure; // cash cost difference (default) or wealth incl. investing
   cmp: Compare; // which presets the comparison chart combines
 }
 
@@ -40,7 +39,6 @@ export function readHash(): AppState {
     custom,
     buyYear: Number(q.get('x') ?? 0),
     real: q.get('real') === '1',
-    measure: q.get('m') === 'wealth' ? 'wealth' : 'cost',
     cmp: q.get('cmp') ? parseCmp(q.get('cmp')!) : { ...DEFAULT_CMP, em: [p.emirate] },
   };
 }
@@ -54,7 +52,6 @@ export function writeHash(s: AppState) {
   if (s.p.scenario === 'custom') q.set('path', s.custom.map((g) => +g.toFixed(4)).join(','));
   if (s.buyYear) q.set('x', String(s.buyYear));
   if (s.real) q.set('real', '1');
-  if (s.measure === 'wealth') q.set('m', 'wealth');
   const cmpDefault = { ...DEFAULT_CMP, em: [s.p.emirate] };
   if (JSON.stringify(s.cmp) !== JSON.stringify(cmpDefault)) q.set('cmp', [s.cmp.em, s.cmp.sc, s.cmp.fin, s.cmp.g, s.cmp.r].map((x) => x.join('_')).join('~'));
   const h = q.toString();

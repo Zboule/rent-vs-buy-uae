@@ -26,4 +26,9 @@ ok(y1.advantage < 0, 'year-1 advantage negative');
 const all = simulateAll(DEFAULTS, []);
 for (const b of all.slice(0, 3)) console.log(`X=${b.buyYear} price=${Math.round(b.price)} rent=${Math.round(b.rent)} pay/mo=${Math.round(b.monthlyPayment)} breakEven=${b.breakEven}`,
   b.rows.filter((_, i) => [0, 2, 4, 9, 14, 24].includes(i)).map((x) => `${x.held}y:${Math.round(x.advantage / 1000)}k`).join(' '));
+{
+  const rows = simulateBuy({ ...DEFAULTS, price: 3e6, rent: 240000, rentGrowth: 0.05 }, 2, []).rows;
+  const worst = Math.max(...rows.map((x) => Math.abs(x.rentNet - x.buyNet - x.advantage)));
+  ok(worst < 1e-3, `rentNet - buyNet == advantage (max err ${worst})`);
+}
 process.exit(fail ? 1 : 0);

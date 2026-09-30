@@ -19,15 +19,21 @@ modelled on the UAE's real cycles. Every value is editable and every scenario is
   break-even holding period.
 - **Year-by-year table**: sale price, selling costs, loan left, net proceeds, both portfolios.
 
-## Two views
+## What the number means
 
-- **Cost difference** (default): plain cash, no investing. Rent paid (rent + housing fee + agent
-  fees and moves) minus the net cost of buying then selling (down payment + every purchase fee +
-  mortgage payments + service charge, maintenance, insurance, housing fee − net sale proceeds).
-  Positive = buying then selling cost less than renting.
-- **Wealth, investing the difference**: the method below.
+**Difference = cost of renting − cost of buying then selling**, at each sell year.
 
-## The math (wealth view)
+- **Cost of renting** = rent + housing fee + agent fees and moves, minus what your unspent cash
+  earned while invested (the down payment and buying fees you kept, plus each month's saving
+  while renting is cheaper).
+- **Cost of buying** = down payment + every purchase fee + mortgage payments + service charge,
+  maintenance, insurance and housing fee, minus the net sale proceeds (after agent, fees and
+  loan payoff), minus what the owner's own monthly savings earned (once owning is cheaper).
+
+Positive = buying then selling was cheaper. This is algebraically the same as owner wealth minus
+renter wealth (checked in `scripts/check.ts`).
+
+## The math
 
 Both paths are identical until year X, so the comparison starts at X with the market's price and
 rent at that point.

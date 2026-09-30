@@ -3,7 +3,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  DEFAULTS, PRESETS, SCENARIOS, VAT, breakEvenOf, marketPath, metric, simulateAll, simulateBuy, type Measure, type BuyResult, type Emirate, type Params, type SellRow,
+  DEFAULTS, PRESETS, SCENARIOS, VAT, breakEvenOf, marketPath, simulateAll, simulateBuy, type BuyResult, type Emirate, type Params, type SellRow,
 } from './engine';
 import { DEFAULT_CMP, initialCustom, readHash, writeHash, type AppState, type Compare, type Financing } from './state';
 import { abbr, aed, pct } from './format';
@@ -21,8 +21,7 @@ export default function App() {
   const all = useMemo(() => simulateAll(p, custom), [p, custom]);
   const X = Math.min(s.buyYear, p.maxBuyYear);
   const sel = all[X];
-  const val = (r: SellRow) => metric(r, s.measure, s.real);
-  const cost = s.measure === 'cost';
+  const val = (r: SellRow) => (s.real ? r.advantageReal : r.advantage);
 
   return (
     <div className="page">
@@ -30,10 +29,12 @@ export default function App() {
         <h1>Rent or buy, UAE</h1>
         <p className="tagline">If I buy in year X and sell in year Y, am I better off than if I had kept renting?</p>
         <p className="intro">
-          Renting costs you the rent. Buying costs you the down payment, every fee, the mortgage and the running costs,
-          minus what you get back when you sell (after the agent and paying off the loan). The charts show the gap
-          between the two: <b className="c-buy">blue</b> when buying then selling cost less than renting,{' '}
-          <b className="c-rent">orange</b> when renting was cheaper.
+          <b>Cost of renting</b> = rent and fees paid, minus what your cash earned while invested (the down payment and
+          buying fees you did not spend, plus each month's saving when renting is cheaper).{' '}
+          <b>Cost of buying</b> = down payment, every fee, mortgage and running costs, minus what you get back when you
+          sell (after the agent and the loan payoff). Every chart shows cost of renting minus cost of buying:{' '}
+          <b className="c-buy">blue</b> means buying then selling was cheaper, <b className="c-rent">orange</b> means
+          renting was.
         </p>
       </header>
 
@@ -45,39 +46,25 @@ export default function App() {
         <main className="results">
           <BuyYearPicker all={all} X={X} onPick={(x) => setS((o) => ({ ...o, buyYear: x }))} />
           <div className="measure-bar">
-            <div className="seg measure" role="radiogroup" aria-label="What to compare">
-              {(['cost', 'wealth'] as Measure[]).map((m) => (
-                <button key={m} className={s.measure === m ? 'on' : ''} onClick={() => setS((o) => ({ ...o, measure: m }))}>
-                  {m === 'cost' ? 'Cost difference' : 'Wealth, investing the difference'}
-                </button>
-              ))}
-            </div>
+            <span className="muted small">Cost of renting minus cost of buying, if you sell in each year.</span>
             <label className="toggle">
               <input type="checkbox" checked={s.real} onChange={(e) => setS((o) => ({ ...o, real: e.target.checked }))} />
               today's money
             </label>
           </div>
-          <p className="sub measure-note">
-            {cost
-              ? 'Total rent paid minus the net cost of buying then selling, in plain cash. Positive: buying was cheaper.'
-              : 'Adds the investing: the renter invests the down payment and fees, and whoever spends less each month invests the gap. Owner wealth minus renter wealth.'}
-          </p>
           <Headline r={sel} val={val} />
 
           <section className="card">
             <h2>Presets compared: buy in {NOW + X}, sell over the years</h2>
             <p className="sub">
               Each line is one combination of the ticked presets, on top of your inputs.{' '}
-              {cost
-                ? 'Rent paid minus the net cost of buying and selling that year. Above zero, buying was cheaper. Investment return has no effect in this view.'
-                : 'Owner wealth minus renter wealth if you sell that year. Above zero, buying leaves you richer.'}
+              Cost of renting minus cost of buying if you sell that year. Above zero, buying was cheaper.
             </p>
             <PresetCompare
               p={p}
               custom={custom}
               X={X}
               val={val}
-              noReturn={cost}
               cmp={s.cmp}
               setCmp={(cmp) => setS((o) => ({ ...o, cmp }))}
             />
@@ -85,7 +72,7 @@ export default function App() {
 
           <section className="card">
             <h2>Buy in {NOW + X}, sell in year…</h2>
-            <p className="sub">{cost ? 'Rent paid minus net cost of buying then selling, by sell year.' : 'Wealth if you bought, minus wealth if you kept renting, at the moment you sell.'}</p>
+            <p className="sub">Cost of renting minus cost of buying, by the year you sell.</p>
             <AdvantageChart r={sel} val={val} />
           </section>
 
@@ -99,7 +86,7 @@ export default function App() {
 
           <section className="card">
             <h2>Year by year, buying in {NOW + X}</h2>
-            <p className="sub">Cumulative AED at the time of sale. Last column follows the selected view{s.real ? ", in today's money" : ''}.</p>
+            <p className="sub">Cumulative AED at the time of sale. How each side's cost is built{s.real ? ", last column in today's money" : ''}.</p>
             <SellTable r={sel} val={val} />
           </section>
 
@@ -224,8 +211,8 @@ function DashSwatch({ dash, color = 'currentColor', width = 2 }: { dash: string;
 }
 
 function PresetCompare({
-  p, custom, X, val, noReturn, cmp, setCmp,
-}: { p: Params; custom: number[]; X: number; val: (r: SellRow) => number; noReturn: boolean; cmp: Compare; setCmp: (c: Compare) => void }) {
+  p, custom, X, val, cmp, setCmp,
+}: { p: Params; custom: number[]; X: number; val: (r: SellRow) => number; cmp: Compare; setCmp: (c: Compare) => void }) {
   const toggle = <K extends keyof Compare>(k: K, v: string) => {
     const cur = cmp[k] as string[];
     setCmp({ ...cmp, [k]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] });
@@ -234,9 +221,7 @@ function PresetCompare({
   const scenarios = SCENARIOS.filter((x) => x.key !== 'custom' || p.scenario === 'custom');
   const trendKeys = ['in', ...TRENDS.map(String)].filter((k) => cmp.g.includes(k));
   const scKeys = scenarios.map((x) => x.key).filter((k) => cmp.sc.includes(k));
-  // the cash view ignores investing, so every return would draw the same curve: keep one
-  const retTicked = ['in', ...RETURNS.map(String)].filter((k) => cmp.r.includes(k));
-  const retKeys = noReturn ? retTicked.slice(0, 1).map(() => 'in') : retTicked;
+  const retKeys = ['in', ...RETURNS.map(String)].filter((k) => cmp.r.includes(k));
   const emKeys = (['DXB', 'AUH'] as Emirate[]).filter((e) => cmp.em.includes(e));
   const finKeys = (['loan', 'cash'] as Financing[]).filter((f) => cmp.fin.includes(f));
   const trendVal = (k: string) => (k === 'in' ? p.priceGrowth : Number(k));
@@ -266,7 +251,7 @@ function PresetCompare({
           downPct: fin === 'cash' ? 1 : p.downPct,
         };
         const styleName = [
-          !noReturn && (retKeys.length > 1 || r !== 'in') ? retLabel(r) : '',
+          retKeys.length > 1 || r !== 'in' ? retLabel(r) : '',
           emKeys.length > 1 || em !== p.emirate ? EM_LABEL[em] : '',
           finKeys.length > 1 || fin !== 'loan' ? FIN_LABEL[fin] : '',
         ].filter(Boolean).join(' · ') || 'your inputs';
@@ -285,7 +270,7 @@ function PresetCompare({
       });
     });
     return out;
-  }, [p, custom, X, cmp, noReturn]);
+  }, [p, custom, X, cmp]);
 
   const colors = [...new Map(series.map((s) => [s.colorKey, s])).values()];
   const styles = [...new Map(series.map((s) => [s.styleKey, s])).values()];
@@ -324,10 +309,8 @@ function PresetCompare({
           ))}
         </div>
         <div className="cmp-g">
-          <div className="cmp-h">Investment return{noReturn && <span className="cmp-off"> · only in the wealth view</span>}</div>
-          {['in', ...RETURNS.map(String)].map((k) => noReturn ? (
-            <label key={k} className="cbx off"><input type="checkbox" disabled checked={cmp.r.includes(k)} readOnly />{k === 'in' ? `Your input, ${pct(p.investReturn)}/yr` : `${pct(Number(k))}/yr`}</label>
-          ) : (
+          <div className="cmp-h">Return on cash not spent on the home</div>
+          {['in', ...RETURNS.map(String)].map((k) => (
             <Box key={k} on={cmp.r.includes(k)} label={k === 'in' ? `Your input, ${pct(p.investReturn)}/yr` : `${pct(Number(k))}/yr`} onClick={() => toggle('r', k)} />
           ))}
           <div className="cmp-h">Emirate fees</div>
@@ -534,9 +517,14 @@ function SellTable({ r, val }: { r: BuyResult; val: (x: SellRow) => number }) {
       <table className="grid">
         <thead>
           <tr>
-            <th>Sell</th><th>Held</th><th>Rent paid</th><th>Paid out buying</th><th>Sale price</th><th>Selling costs</th>
-            <th>Loan left</th><th>Net from sale</th><th>Net cost of buying</th><th>Cost difference</th><th>Wealth difference</th>
-            <th>Shown</th>
+            <th rowSpan={2}>Sell</th><th rowSpan={2}>Held</th>
+            <th colSpan={3} className="grp">Renting</th>
+            <th colSpan={5} className="grp">Buying then selling</th>
+            <th rowSpan={2}>Difference</th>
+          </tr>
+          <tr>
+            <th>Rent paid</th><th>Cash earned</th><th>Cost</th>
+            <th>Paid out</th><th>Sale price</th><th>Sell costs + loan</th><th>Cash earned</th><th>Cost</th>
           </tr>
         </thead>
         <tbody>
@@ -544,15 +532,14 @@ function SellTable({ r, val }: { r: BuyResult; val: (x: SellRow) => number }) {
             <tr key={x.held} className={be === x.held ? 'be' : ''}>
               <td>{NOW + x.sellYear}</td>
               <td>{x.held}y</td>
-              <td>{abbr(x.rentCost)}</td>
-              <td>{abbr(x.buyCost + x.netProceeds)}</td>
-              <td>{abbr(x.salePrice)}</td>
-              <td>−{abbr(x.sellCosts)}</td>
-              <td>{x.loanLeft >= 1 ? `−${abbr(x.loanLeft)}` : '0'}</td>
-              <td>{abbr(x.netProceeds)}</td>
-              <td>{abbr(x.buyCost)}</td>
-              <td className={x.costDiff >= 0 ? 'c-buy' : 'c-rent'}>{sign(x.costDiff)}</td>
-              <td className={x.advantage >= 0 ? 'c-buy' : 'c-rent'}>{sign(x.advantage)}</td>
+              <td>{abbr(x.rentPaid)}</td>
+              <td>−{abbr(x.renterGains)}</td>
+              <td className="b">{abbr(x.rentNet)}</td>
+              <td>{abbr(x.buyPaid)}</td>
+              <td>−{abbr(x.salePrice)}</td>
+              <td>+{abbr(x.sellCosts + x.loanLeft)}</td>
+              <td>−{abbr(x.ownerGains)}</td>
+              <td className="b">{abbr(x.buyNet)}</td>
               <td className={val(x) >= 0 ? 'c-buy b' : 'c-rent b'}>{sign(val(x))}</td>
             </tr>
           ))}
@@ -851,7 +838,7 @@ function Inputs({ s, setS, set }: { s: AppState; setS: (f: (o: AppState) => AppS
 
       <button
         className="reset"
-        onClick={() => setS(() => ({ p: { ...DEFAULTS }, custom: initialCustom(DEFAULTS), buyYear: 0, real: false, measure: 'cost', cmp: DEFAULT_CMP }))}
+        onClick={() => setS(() => ({ p: { ...DEFAULTS }, custom: initialCustom(DEFAULTS), buyYear: 0, real: false, cmp: DEFAULT_CMP }))}
       >
         Reset everything
       </button>

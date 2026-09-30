@@ -235,11 +235,15 @@ export interface SellRow {
   renterWealth: number;
   advantage: number; // owner - renter, nominal AED at Y
   advantageReal: number; // in today's AED
-  // plain cash view, no investing: what each path cost you in total by year Y
-  rentCost: number; // rent + housing fee + moves
-  buyCost: number; // down payment + fees + mortgage + running costs - net sale proceeds
-  costDiff: number; // rentCost - buyCost: positive = buying and selling cost less than renting
-  costDiffReal: number; // same, every flow deflated to today's money
+  // the same result told as costs: renting costs rent minus what the unspent cash earned,
+  // buying costs everything paid out minus the net sale and what the owner's savings earned.
+  // rentNet - buyNet === advantage.
+  rentPaid: number; // rent + housing fee + agent fees and moves
+  renterGains: number; // investment gains on the down payment, fees and monthly savings not spent
+  rentNet: number;
+  buyPaid: number; // down payment + purchase fees + mortgage + running costs
+  ownerGains: number; // gains on the owner's monthly savings (once owning is cheaper than renting)
+  buyNet: number; // buyPaid - netProceeds - ownerGains
   // cumulative spend X..Y, for the breakdown
   paidInterest: number;
   paidPrincipal: number;
@@ -278,8 +282,8 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
   let owner = 0;
   let renter = costs.upfront;
   let paidInterest = 0, paidPrincipal = 0, paidOwnerCosts = 0, paidRent = 0;
-  const defl = (t: number) => Math.pow(1 + p.inflation, -t / 12); // today's money
-  let ownerCash = costs.upfront, ownerCashReal = costs.upfront * defl(X * 12), rentReal = 0;
+  let ownerCash = costs.upfront;
+  let renterIn = costs.upfront, ownerIn = 0; // cash put into each portfolio
   const rows: SellRow[] = [];
 
   for (let m = 0; m < p.maxHold * 12; m++) {
@@ -317,15 +321,13 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
     }
     paidRent += renterOut;
     ownerCash += ownerOut;
-    ownerCashReal += ownerOut * defl(t);
-    rentReal += renterOut * defl(t);
 
     // both portfolios grow, then whoever spent less invests the difference
     owner *= 1 + invMonthly;
     renter *= 1 + invMonthly;
     const diff = ownerOut - renterOut;
-    if (diff > 0) renter += diff;
-    else owner -= diff;
+    if (diff > 0) { renter += diff; renterIn += diff; }
+    else { owner -= diff; ownerIn -= diff; }
 
     if ((m + 1) % 12 === 0) {
       const Y = (t + 1) / 12;
@@ -335,8 +337,8 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
       const netProceeds = salePrice - sellCosts - balance;
       const ownerWealth = owner + netProceeds;
       const advantage = ownerWealth - renter;
-      const buyCost = ownerCash - netProceeds;
-      const buyCostReal = ownerCashReal - netProceeds * defl(t + 1);
+      const renterGains = renter - renterIn;
+      const ownerGains = owner - ownerIn;
       rows.push({
         sellYear: Y,
         held: Y - X,
@@ -349,10 +351,12 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
         renterWealth: renter,
         advantage,
         advantageReal: advantage / Math.pow(1 + p.inflation, Y),
-        rentCost: paidRent,
-        buyCost,
-        costDiff: paidRent - buyCost,
-        costDiffReal: rentReal - buyCostReal,
+        rentPaid: paidRent,
+        renterGains,
+        rentNet: paidRent - renterGains,
+        buyPaid: ownerCash,
+        ownerGains,
+        buyNet: ownerCash - netProceeds - ownerGains,
         paidInterest,
         paidPrincipal,
         paidOwnerCosts,
@@ -367,14 +371,6 @@ export function simulateBuy(p: Params, X: number, custom: number[]): BuyResult {
     else break;
   }
   return { buyYear: X, price, rent: p.rent * rIdxYear[X], costs, monthlyPayment: firstPay, rows, breakEven };
-}
-
-export type Measure = 'cost' | 'wealth';
-
-/** The number every chart plots: positive = buying wins. */
-export function metric(r: SellRow, m: Measure, real: boolean): number {
-  if (m === 'cost') return real ? r.costDiffReal : r.costDiff;
-  return real ? r.advantageReal : r.advantage;
 }
 
 /** First holding period from which buying wins and keeps winning, or null. */

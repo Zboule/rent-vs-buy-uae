@@ -191,8 +191,4 @@ h2 { font-size: 1.02rem; margin: 0 0 4px; letter-spacing: -0.01em; }
 .key.on { background: var(--hover); font-weight: 600; }
 .key .dashsw { color: var(--text2); }
 .measure-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.seg.measure { flex: 1; max-width: 520px; background: var(--panel); }
-.seg.measure button.on { background: var(--accent); color: var(--bg); }
-.measure-note { margin: -8px 0 0; }
-.cbx.off { opacity: .45; cursor: default; }
-.cmp-off { text-transform: none; letter-spacing: 0; }
+.grid th.grp { text-align: center; border-bottom: 1px solid var(--border); color: var(--text2); }
