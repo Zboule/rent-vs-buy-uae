@@ -226,3 +226,11 @@ h2 { font-size: 1.02rem; margin: 0 0 4px; letter-spacing: -0.01em; }
 .notes p { font-size: 0.82rem; color: var(--text2); margin: 6px 0; }
 .horizon { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 .horizon .chip { padding: 4px 10px; font-size: 0.8rem; }
+.hz-in { width: 44px; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 8px; font-size: 16px; text-align: center; }
+.scen { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--grid); cursor: pointer; color: var(--muted); }
+.scen.on { color: var(--text); }
+.scen input { margin-top: 3px; accent-color: var(--text); width: 16px; height: 16px; flex: none; }
+.scen-t { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.scen-l { font-size: 0.86rem; font-weight: 600; }
+.scen-c { font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--text2); }
+.scen-head { font-size: 0.7rem; }

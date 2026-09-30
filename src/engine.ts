@@ -64,40 +64,67 @@ export interface Params {
 
 export const VAT = 0.05;
 
-export type ScenarioKey = 'steady' | 'crash08' | 'slump14' | 'boomBust' | 'custom';
+export type ScenarioKey = 'trend' | 'veryGood' | 'good' | 'neutral' | 'bad' | 'veryBad' | 'chaos' | 'bleed';
 
 export interface Scenario {
   key: ScenarioKey;
   label: string;
   note: string;
-  /** added to the base growth, per year from today (year 0 = the coming year) */
-  shocks: number[];
+  /** yearly price change, year 0 = the coming year */
+  path: number[];
+  /** yearly price change after the path runs out */
+  tail: number;
 }
 
-// Shocks sit on top of the base growth. Loosely modelled on Dubai's real cycles:
-// 2008-09 (prices roughly halved within ~18 months), 2014-2020 (a long ~30% grind down).
+// Full price paths, researched Sept 2026. Context: prices already 4-7% off the 2025 peak after
+// the Iran war; 150-210k units handing over 2025-27 (Fitch: correction up to 15%, Moody's: modest
+// correction from 2026). History: 2008-09 fell 45-60% peak to trough in ~18 months; 2014-2020 slid
+// 25-30% over ~6 years. Rents follow price swings partly (see rentFollows).
 export const SCENARIOS: Scenario[] = [
-  { key: 'steady', label: 'Steady', note: 'Base growth every year, no cycle.', shocks: [] },
   {
-    key: 'crash08',
-    label: '2008-style crash in 3 years',
-    note: 'Prices fall ~45% over years 4-5, then climb back to the trend by year 10.',
-    shocks: [0, 0, 0, -0.3, -0.22, 0.05, 0.15, 0.2, 0.2, 0.1],
+    key: 'veryGood', label: 'Very good: boom resumes',
+    note: 'Conflict ends fast, inflows of wealthy residents return, supply is absorbed. About +45% in 6 years.',
+    path: [0.07, 0.08, 0.07, 0.06, 0.05, 0.05], tail: 0.04,
   },
   {
-    key: 'slump14',
-    label: '2014-style slow slump',
-    note: 'Six years of ~5% yearly declines from year 2, then five strong years back to the trend.',
-    shocks: [0, -0.08, -0.08, -0.08, -0.08, -0.08, -0.08, 0.1, 0.1, 0.1, 0.1, 0.1],
+    key: 'good', label: 'Good: soft landing',
+    note: 'A small dip as the supply wave lands, then steady growth. About +19% in 6 years.',
+    path: [-0.02, 0.02, 0.04, 0.05, 0.05, 0.04], tail: 0.035,
   },
   {
-    key: 'boomBust',
-    label: 'Boom now, bust later',
-    note: 'Two more hot years, then a correction in years 4-6 that never fully recovers.',
-    shocks: [0.08, 0.06, 0, -0.12, -0.12, -0.08],
+    key: 'neutral', label: 'Neutral: Fitch correction, recovery',
+    note: 'The 10-15% correction the rating agencies expect over 2 years, then back to normal growth. About -13% by year 3, -3% in 6 years.',
+    path: [-0.07, -0.06, 0.0, 0.03, 0.04, 0.04], tail: 0.03,
   },
-  { key: 'custom', label: 'Custom (edit each year)', note: 'Set every year yourself below.', shocks: [] },
+  {
+    key: 'bad', label: 'Bad: -20% then slow decline',
+    note: 'Like 2014-2020: a 20% fall over 3 years, then years of drift lower before a weak recovery. About -25% in 6 years.',
+    path: [-0.1, -0.07, -0.05, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02], tail: 0.025,
+  },
+  {
+    key: 'veryBad', label: 'Very bad: 2008-style crash',
+    note: 'Prices fall ~45% within 2 years, then a slow rebuild. Still about -39% after 6 years.',
+    path: [-0.25, -0.22, -0.04, 0.0, 0.03, 0.05, 0.06, 0.06], tail: 0.04,
+  },
+  {
+    key: 'chaos', label: 'Regional chaos: lost decade',
+    note: 'The conflict drags on, expats leave, no recovery for 10 years. About -35% in 6 years, -37% in 10.',
+    path: [-0.12, -0.1, -0.07, -0.05, -0.04, -0.03, -0.02, -0.01, -0.01, 0.0], tail: 0.01,
+  },
+  {
+    key: 'bleed', label: 'Slow bleed: -2% a year for good',
+    note: 'No crash, just a long structural decline (oversupply that never clears). About -11% in 6 years.',
+    path: [], tail: -0.02,
+  },
+  {
+    key: 'trend', label: 'Constant trend (your %)',
+    note: 'The price change per year you enter, every year.',
+    path: [], tail: 0,
+  },
 ];
+
+/** the long-run growth rents are measured against: at this price change rents grow at rentGrowth */
+export const NEUTRAL_GROWTH = 0.03;
 
 export const PRESETS: Record<Emirate, Partial<Params>> = {
   DXB: {
@@ -153,7 +180,7 @@ export const DEFAULTS: Params = {
   rentAgentPct: 0.05,
   moveCost: 8_000,
   priceGrowth: 0.03,
-  scenario: 'steady',
+  scenario: 'trend',
   rentFollows: 0.6,
   investReturn: 0.07,
   investTax: 0,
@@ -163,19 +190,18 @@ export const DEFAULTS: Params = {
 };
 
 /** Yearly price and rent growth for years 0..n-1 from today. */
-export function marketPath(p: Params, custom: number[], n: number) {
-  const sc = SCENARIOS.find((s) => s.key === p.scenario) ?? SCENARIOS[0];
+export function marketPath(p: Params, _custom: number[], n: number) {
+  const sc = SCENARIOS.find((s) => s.key === p.scenario) ?? SCENARIOS[SCENARIOS.length - 1];
   const price: number[] = [];
   const rent: number[] = [];
   for (let y = 0; y < n; y++) {
-    if (p.scenario === 'custom') {
-      const g = custom[y] ?? p.priceGrowth;
-      price.push(g);
-      rent.push(p.rentGrowth + (g - p.priceGrowth) * p.rentFollows);
+    if (sc.key === 'trend') {
+      price.push(p.priceGrowth);
+      rent.push(p.rentGrowth);
     } else {
-      const s = sc.shocks[y] ?? 0;
-      price.push(p.priceGrowth + s);
-      rent.push(p.rentGrowth + s * p.rentFollows);
+      const g = sc.path[y] ?? sc.tail;
+      price.push(g);
+      rent.push(p.rentGrowth + (g - NEUTRAL_GROWTH) * p.rentFollows);
     }
   }
   return { price, rent };

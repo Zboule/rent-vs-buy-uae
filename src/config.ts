@@ -38,8 +38,8 @@ export const FIELDS: FieldDef[] = [
   { key: 'rentAgentPct', label: 'Agent fee per move', kind: 'pct', group: 'Renting', hint: '% of annual rent, + VAT', tag: (v) => `rent agent ${pc(v)}` },
   { key: 'moveCost', label: 'Other costs per move', kind: 'aed', group: 'Renting', tag: (v) => `move ${abbr(v)}` },
 
-  { key: 'priceGrowth', label: 'Property price change per year', kind: 'pct', group: 'Market', hint: 'Optimistic to pessimistic, e.g. 7, 5, 3, 1, -2', tag: (v) => `prices ${sg(v)}/yr` },
-  { key: 'rentFollows', label: 'Rents follow crashes/booms by', kind: 'pct', group: 'Market', hint: 'Only matters with a market cycle', tag: (v) => `rents follow ${pc(v)}` },
+  { key: 'rentFollows', label: 'Rents follow price swings by', kind: 'pct', group: 'Market', hint: 'In 2009 rents fell ~30% while prices fell ~50%: about 60%', tag: (v) => `rents follow ${pc(v)}` },
+  { key: 'priceGrowth', label: 'Constant trend, per year', kind: 'pct', group: 'Market', hint: 'Only for the "Constant trend" scenario', tag: (v) => `prices ${sg(v)}/yr` },
 
   { key: 'investReturn', label: 'Return on money not spent on the home', kind: 'pct', group: 'Opportunity cost', hint: 'What the down payment, fees and monthly savings would earn invested', tag: (v) => `invest ${pc(v)}` },
   { key: 'investTax', label: 'Tax on that return', kind: 'pct', group: 'Opportunity cost', hint: '0 in the UAE', tag: (v) => `tax ${pc(v)}` },
@@ -73,7 +73,7 @@ export const EM_FIELDS: { key: string; label: string; kind: Kind }[] = [
 
 export const EMIRATES: Emirate[] = ['DXB', 'AUH'];
 export const EM_LABEL: Record<Emirate, string> = { DXB: 'Dubai', AUH: 'Abu Dhabi' };
-export const CYCLES = SCENARIOS.filter((s) => s.key !== 'custom');
+export const CYCLES = SCENARIOS;
 
 export interface Config {
   lists: Record<string, number[]>;
@@ -92,19 +92,18 @@ export const DEFAULT_CONFIG: Config = {
   lists: {
     ...Object.fromEntries(FIELDS.map((f) => [f.key, [f.key === 'buyYear' ? 0 : P[f.key]]])),
     price: [3_000_000],
-    downPct: [0.2, 1],
+    downPct: [0.2],
     rent: [240_000],
     rentGrowth: [0.05],
-    priceGrowth: [0.07, 0.05, 0.03, 0.01, -0.02],
     investReturn: [0.04, 0.06, 0.08, 0.1],
   },
   emirates: ['DXB'],
-  cycles: ['steady'],
+  cycles: ['veryGood', 'good', 'neutral', 'bad', 'veryBad', 'chaos', 'bleed'],
   emFees: Object.fromEntries(
     EMIRATES.map((e) => [e, Object.fromEntries(EM_FIELDS.map((f) => [f.key, ({ ...P, ...PRESETS[e] } as Record<string, number>)[f.key]]))]),
   ) as Record<Emirate, Record<string, number>>,
   horizon: 10,
-  colorBy: 'priceGrowth',
+  colorBy: 'cycle',
   styleBy: 'investReturn',
   widthBy: 'downPct',
 };
@@ -122,19 +121,27 @@ export function dims(c: Config): Dim[] {
   return [
     ...FIELDS.map((f) => ({ key: f.key, label: f.label, values: c.lists[f.key], tag: (v: number | string) => f.tag(v as number) })),
     { key: 'emirate', label: 'Emirate', values: c.emirates, tag: (v: number | string) => EM_LABEL[v as Emirate] },
-    { key: 'cycle', label: 'Market cycle', values: c.cycles, tag: (v: number | string) => CYCLES.find((s) => s.key === v)!.label },
+    { key: 'cycle', label: 'Price scenario', values: c.cycles, tag: (v: number | string) => CYCLES.find((s) => s.key === v)!.label },
   ];
 }
 
 export const MAX_LINES = 160;
 
 // options that only exist when there is a loan: a cash buyer ignores them
+// options a combination ignores: the constant trend only applies to the "trend" scenario,
+// rentFollows only to the others
+const ignored = (combo: Record<string, number | string>) => [
+  ...((combo.downPct as number) >= 1 ? LOAN_KEYS : []),
+  ...(combo.cycle === 'trend' ? ['rentFollows'] : ['priceGrowth']),
+];
 const LOAN_KEYS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
 
 export interface LineDef {
   id: string;
   combo: Record<string, number | string>;
   name: string;
+  /** the name's pieces by option key, for reordering */
+  parts: Record<string, string>;
   buyYear: number;
   rows: SellRow[];
   paymentYear: number; // mortgage payments in the first year
@@ -144,15 +151,15 @@ export interface LineDef {
 export function lines(c: Config): { lines: LineDef[]; total: number; varying: Dim[] } {
   const ds = dims(c);
   const varying = ds.filter((d) => d.values.length > 1);
-  const total = ds.reduce((n, d) => n * Math.max(1, d.values.length), 1);
   if (ds.some((d) => d.values.length === 0)) return { lines: [], total: 0, varying };
+  let total = 0;
 
   const out: LineDef[] = [];
   const walk = (i: number, combo: Record<string, number | string>) => {
-    if (out.length >= MAX_LINES) return;
     if (i === ds.length) {
       // a cash buyer with several terms/rates would draw identical lines: keep only the first
-      if ((combo.downPct as number) >= 1 && LOAN_KEYS.some((k) => combo[k] !== c.lists[k][0])) return;
+      if (ignored(combo).some((k) => combo[k] !== c.lists[k][0])) return;
+      if (++total > MAX_LINES) return;
       const em = combo.emirate as Emirate;
       const p = {
         ...DEFAULTS,
@@ -167,11 +174,10 @@ export function lines(c: Config): { lines: LineDef[]; total: number; varying: Di
       out.push({
         id: `l${out.length}`,
         combo: { ...combo },
-        name:
-          varying
-            .filter((d) => !((combo.downPct as number) >= 1 && LOAN_KEYS.includes(d.key)))
-            .map((d) => d.tag(combo[d.key]))
-            .join(' · ') || 'Your inputs',
+        name: '',
+        parts: Object.fromEntries(
+          varying.filter((d) => !ignored(combo).includes(d.key)).map((d) => [d.key, d.tag(combo[d.key])]),
+        ),
         buyYear: X,
         rows: b.rows,
         paymentYear: b.monthlyPayment * 12,

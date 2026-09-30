@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts';
-import { breakEvenOf, type Emirate, type ScenarioKey } from './engine';
+import { breakEvenOf, SCENARIOS, type Emirate, type ScenarioKey } from './engine';
 import {
   CYCLES, DEFAULT_CONFIG, EMIRATES, EM_FIELDS, EM_LABEL, FIELDS, MAX_LINES, NOW, lines, readConfig, writeConfig,
   type Config, type Dim, type Kind, type LineDef,
@@ -77,8 +77,11 @@ function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) =
   const dimOf = (k: string) => varying.find((d) => d.key === k);
   const idx = (k: string, v: number | string) => (dimOf(k)?.values ?? []).indexOf(v as never);
 
+  // name each line in the order colour, style, thickness, then the rest
+  const order = [colorBy, styleBy, widthBy, ...vKeys].filter((k, i, a) => k && a.indexOf(k) === i);
   const styled: Styled[] = res.lines.map((l) => ({
     ...l,
+    name: order.filter((k) => l.parts[k]).map((k) => l.parts[k]).join(' · ') || 'Your inputs',
     color: colorBy ? COLORS[idx(colorBy, l.combo[colorBy]) % COLORS.length] : COLORS[0],
     dash: styleBy ? DASHES[idx(styleBy, l.combo[styleBy]) % DASHES.length] : '',
     width: widthBy ? WIDTHS[idx(widthBy, l.combo[widthBy]) % WIDTHS.length] : 2.2,
@@ -102,12 +105,13 @@ function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) =
   });
 
   const [active, setActive] = useState<number | null>(null);
-  const activeYear = active != null && years.includes(active) ? active : years[Math.min(4, years.length - 1)];
+  // default to the end of the horizon: the question is usually 'where do I stand if I sell then'
+  const activeYear = active != null && years.includes(active) ? active : years[years.length - 1];
 
   if (!styled.length) {
     return (
       <section className="card">
-        <p className="muted">Enter at least one value in every field, and tick at least one emirate and one market cycle.</p>
+        <p className="muted">Enter at least one value in every field, and tick at least one emirate and one price scenario.</p>
       </section>
     );
   }
@@ -159,11 +163,21 @@ function Graph({ c, setC, res }: { c: Config; setC: (f: (o: Config) => Config) =
         {res.total > MAX_LINES && <span className="warn small">showing the first {MAX_LINES} of {res.total} combinations</span>}
         <div className="horizon" role="radiogroup" aria-label="Horizon">
           <span className="muted small">Next</span>
-          {[5, 10, 15, 20, 25].map((h) => (
+          {[3, 6, 10, 15, 25].map((h) => (
             <button key={h} className={c.horizon === h ? 'chip on' : 'chip'} onClick={() => setC((o) => ({ ...o, horizon: h }))}>
               {h}y
             </button>
           ))}
+          <input
+            className="hz-in"
+            inputMode="numeric"
+            aria-label="Years to show"
+            value={c.horizon}
+            onChange={(e) => {
+              const n = Math.round(Number(e.target.value));
+              if (n >= 1 && n <= 35) setC((o) => ({ ...o, horizon: n }));
+            }}
+          />
         </div>
       </div>
 
@@ -358,6 +372,42 @@ function Checks<T extends string>({
   );
 }
 
+function cumulative(key: ScenarioKey, years: number): number {
+  const sc = SCENARIOS.find((x) => x.key === key)!;
+  let v = 1;
+  for (let y = 0; y < years; y++) v *= 1 + (sc.path[y] ?? sc.tail);
+  return v - 1;
+}
+
+function ScenarioPicker({ value, onChange }: { value: ScenarioKey[]; onChange: (v: ScenarioKey[]) => void }) {
+  const all = CYCLES.map((x) => x.key);
+  const fmt = (x: number) => `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`;
+  return (
+    <div className="field">
+      <span className="field-l">
+        Price scenario
+        {value.length > 1 && <span className="badge">{value.length} values</span>}
+      </span>
+      <div className="scen-head muted"><span /><span>price after 3y · 6y · 10y</span></div>
+      {CYCLES.map((sc) => {
+        const on = value.includes(sc.key);
+        return (
+          <label key={sc.key} className={on ? 'scen on' : 'scen'}>
+            <input type="checkbox" checked={on} onChange={() => onChange(all.filter((k) => (k === sc.key ? !on : value.includes(k))))} />
+            <span className="scen-t">
+              <span className="scen-l">{sc.label}</span>
+              {sc.key !== 'trend' && (
+                <span className="scen-c">{fmt(cumulative(sc.key, 3))} · {fmt(cumulative(sc.key, 6))} · {fmt(cumulative(sc.key, 10))}</span>
+              )}
+              <span className="hint">{sc.note}</span>
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 function ConfigForm({ c, setC, total }: { c: Config; setC: (f: (o: Config) => Config) => void; total: number }) {
   const groups = [...new Set(FIELDS.map((f) => f.group))];
   const setList = (k: string, v: number[]) => setC((o) => ({ ...o, lists: { ...o.lists, [k]: v } }));
@@ -382,13 +432,7 @@ function ConfigForm({ c, setC, total }: { c: Config; setC: (f: (o: Config) => Co
             ))}
             {g === 'Market' && (
               <div className="span2">
-                <Checks<ScenarioKey>
-                  label="Market cycle on top of the trend"
-                  all={CYCLES.map((s) => s.key)}
-                  value={c.cycles}
-                  name={(k) => CYCLES.find((s) => s.key === k)!.label}
-                  onChange={(v) => setC((o) => ({ ...o, cycles: v }))}
-                />
+                <ScenarioPicker value={c.cycles} onChange={(v) => setC((o) => ({ ...o, cycles: v }))} />
               </div>
             )}
           </div>
