@@ -132,6 +132,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   const [pinned, setPinned] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [customHz, setCustomHz] = useState(false);
+  const [detail, setDetail] = useState(false);
   const active = pinned ?? hover;
 
   const buys = c.lists.buyYear;
@@ -182,9 +183,13 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   if (atSell.length === 1) {
     const a = atSell[0].a;
     headline = Math.abs(a) < 1000 ? `About even if you sell in ${sellYear}` : `${a > 0 ? 'Buying' : 'Renting'} is cheaper by AED ${compact(Math.abs(a))} if you sell in ${sellYear}`;
-  } else if (wins === atSell.length) headline = `Buying wins on all ${atSell.length} lines by ${sellYear}`;
-  else if (wins === 0) headline = `Renting wins on all ${atSell.length} lines by ${sellYear}`;
-  else headline = `Buying wins on ${wins} of ${atSell.length} lines by ${sellYear}`;
+  } else {
+    const onlyScen = cnt.varying.length === 1 && cnt.varying[0].key === 'cycle';
+    const noun = onlyScen ? 'scenarios' : 'cases';
+    if (wins === atSell.length) headline = `Buying wins in all ${atSell.length} ${noun} by ${sellYear}`;
+    else if (wins === 0) headline = `Renting wins in all ${atSell.length} ${noun} by ${sellYear}`;
+    else headline = `Buying wins in ${wins} of ${atSell.length} ${noun} by ${sellYear}`;
+  }
 
   // readout: a scenario × "everything else" matrix when the scenario and something else both vary,
   // a plain list otherwise. The matrix names every line once (its row + its column).
@@ -211,7 +216,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
     <>
       <div className="hero">
         <h2 className="verdict-h">{headline}</h2>
-        <button className="count" onClick={onCount}>
+        <button className="count" onClick={() => (desc.detail ? setDetail((d) => !d) : onCount())} aria-expanded={desc.detail ? detail : undefined}>
           <span className={over ? 'warn' : ''}>
             {over ? `${MAX_LINES} of ${cnt.total} lines shown` : `${cnt.total} line${cnt.total === 1 ? '' : 's'}`}
             {desc.factors.length > 1 && !over && `: ${desc.factors.join(' × ')}`}
@@ -221,7 +226,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
           </span>
           <svg width="8" height="12" viewBox="0 0 8 12" aria-hidden className="count-chev"><path d="M2 2l4 4-4 4" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>
         </button>
-        {desc.detail && <div className="count-detail">{desc.detail}</div>}
+        {desc.detail && detail && <div className="count-detail">{desc.detail}</div>}
       </div>
 
       <div className="seg-hz" role="radiogroup" aria-label="Years to show">
@@ -249,8 +254,8 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
             onMouseMove={(e) => onMove(e as never, false)}
             onClick={(e) => onMove(e as never, true)}
           >
-            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.06} ifOverflow="hidden" />
-            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.07} ifOverflow="hidden" />
+            <ReferenceArea y1={0} y2={y1} fill="var(--buy-zone)" fillOpacity={1} ifOverflow="hidden" />
+            <ReferenceArea y1={y0} y2={0} fill="var(--rent-zone)" fillOpacity={1} ifOverflow="hidden" />
             <CartesianGrid vertical={false} stroke="var(--grid)" />
             <XAxis dataKey="year" tick={{ fill: 'var(--label2)', fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={8} height={28} />
             <YAxis domain={[y0, y1]} ticks={ticks} tickFormatter={signed} tick={{ fill: 'var(--label2)', fontSize: 12 }} width={48} tickLine={false} axisLine={false} allowDataOverflow />
@@ -306,18 +311,45 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
           <div className="mx-wrap">
             <table className="mx">
               <thead>
-                <tr>
-                  <th className="mx-corner">Scenario</th>
-                  {cols.map(({ key, sample }) => {
-                    const glyph = enc.line({ ...sample.combo, cycle: '__none' });
-                    return (
-                      <th key={key}>
-                        <Swatch color={enc.shadeKey ? glyph.color.replace(/var\(--s\d\)/, 'var(--glyph)') : 'var(--glyph)'} dash={glyph.dash} w={26} width={3} />
-                        <span className="mx-col">{nameOf(sample, true).join(' · ') || 'All'}</span>
-                      </th>
-                    );
-                  })}
-                </tr>
+                {(() => {
+                  // group columns by the line-style option (e.g. down payment) when the columns also differ by something else
+                  const dk = enc.dashKey;
+                  const leafTokens = (l: Styled) => nameOf(l, true).filter((t) => !dk || t !== l.parts[dk]);
+                  const grouped = !!dk && cols.some(({ sample }) => leafTokens(sample).length > 0);
+                  const spans: { label: string; n: number }[] = [];
+                  if (grouped)
+                    for (const { sample } of cols) {
+                      const lab = sample.parts[dk] ?? '';
+                      if (spans.length && spans[spans.length - 1].label === lab) spans[spans.length - 1].n++;
+                      else spans.push({ label: lab, n: 1 });
+                    }
+                  return (
+                    <>
+                      {grouped && (
+                        <tr className="mx-group">
+                          <th />
+                          {spans.map((g, k) => <th key={k} colSpan={g.n}>{g.label}</th>)}
+                        </tr>
+                      )}
+                      <tr>
+                        <th className="mx-corner">Scenario</th>
+                        {cols.map(({ key, sample }) => {
+                          const glyph = enc.line({ ...sample.combo, cycle: '__none' });
+                          const color = enc.shadeKey ? glyph.color.replace(/var\(--s\d\)/, 'var(--glyph)') : 'var(--glyph)';
+                          const label = grouped ? leafTokens(sample).join(' · ') || (sample.combo.downPct as number) >= 1 ? leafTokens(sample).join(' · ') || 'no loan' : leafTokens(sample).join(' · ') || '' : nameOf(sample, true).join(' · ') || 'All';
+                          return (
+                            <th key={key}>
+                              <span className="mx-leaf">
+                                <Swatch color={color} dash={glyph.dash} w={18} width={3} />
+                                <span>{label}</span>
+                              </span>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </>
+                  );
+                })()}
               </thead>
               <tbody>
                 {scenRows.map((sc) => (
@@ -380,7 +412,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
                     </span>
                     <span className="ro-val">
                       <span className={even ? 'amt' : a >= 0 ? 'amt buy' : 'amt rent'}>{even ? '≈0' : signed(a)}</span>
-                      <span className="verdict">{even ? 'about even' : a >= 0 ? 'buying cheaper' : 'renting cheaper'}</span>
+                      {even && <span className="verdict">about even</span>}
                     </span>
                   </button>
                 </li>

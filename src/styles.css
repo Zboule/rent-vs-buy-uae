@@ -18,9 +18,11 @@
   --warn: #b25000;
   --danger: #d70015;
   /* validated categorical palette (very good -> very bad reads green -> red); no blue/orange so lines never read as buy/rent */
-  --s1: #0a9d5a; --s2: #5e5ce6; --s3: #1a9fbf; --s4: #c98a00; --s5: #7a3ec8; --s6: #d9408f; --s7: #b3261e; --s8: #7d6b52;
+  --s1: #0a9d5a; --s2: #5e5ce6; --s3: #1a9fbf; --s4: #c98a00; --s5: #c0398f; --s6: #6b8e23; --s7: #b3261e; --s8: #7d6b52;
   --sheet: #f2f2f7;
-  --shade-step: -0.17;
+  --shade-step: -0.26;
+  --buy-zone: rgba(42, 120, 214, 0.06);
+  --rent-zone: rgba(224, 96, 42, 0.07);
   --glyph: #7c7c82;
   --buy-ink: #1f5fb0;
   --rent-ink: #b8430f;
@@ -48,9 +50,11 @@
     --rent: #ff8a4c;
     --warn: #ffb340;
     --danger: #ff453a;
-    --s1: #1fae5f; --s2: #7f7bf2; --s3: #1996b5; --s4: #b8850f; --s5: #a574f0; --s6: #e8559e; --s7: #c4392f; --s8: #a8895a;
+    --s1: #1fae5f; --s2: #7f7bf2; --s3: #1996b5; --s4: #b8850f; --s5: #d5509f; --s6: #7f9a2c; --s7: #c4392f; --s8: #a8895a;
     --sheet: #1c1c1e;
-    --shade-step: 0.15;
+    --shade-step: 0.22;
+    --buy-zone: rgba(76, 155, 240, 0.09);
+    --rent-zone: rgba(255, 138, 76, 0.09);
     --glyph: #8e8e93;
     --buy-ink: #6aaeff;
     --rent-ink: #ff9a66;
@@ -363,3 +367,11 @@ input { font: inherit; color: inherit; }
 .mx-cell .amt { font-size: 15px; }
 .mx-be { font-size: 11px; color: var(--label2); white-space: nowrap; }
 .mx-foot { font-size: 12px; color: var(--label2); margin: 8px 2px 0; }
+
+/* ---------------------------------------------------------------- round 5 */
+.mx-group th { text-align: center !important; padding-bottom: 2px !important; border-bottom: 0 !important; color: var(--label) !important; font-weight: 600 !important; }
+.mx-leaf { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; }
+.mx-leaf .swatch { display: inline-block !important; margin: 0 !important; }
+@media (min-width: 1024px) { .mx { max-width: 640px; } }
+.count[aria-expanded='true'] .count-chev { transform: rotate(90deg); }
+.count-chev { transition: transform 0.2s; }

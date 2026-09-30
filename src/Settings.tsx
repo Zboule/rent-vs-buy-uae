@@ -271,7 +271,7 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
                 {!trend && (
                   <span className="spark-wrap">
                     <Sparkline path={path} color={on ? color : 'var(--label3)'} />
-                    <span className="spark-l">10 years</span>
+                    <span className="spark-l">{pctS(cum(path, 10))} in 10 years</span>
                   </span>
                 )}
               </button>
@@ -446,7 +446,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
     <section className="settings" id="settings" aria-label="Your assumptions">
       <h2 className="settings-title">Your assumptions</h2>
 
-      {!hintSeen && (
+      {!hintSeen && cnt.varying.every((d) => d.key === 'cycle') && (
         <div className="hintcard">
           <span>Tap <b>Compare</b> on any option to try several values. Each combination draws one line.</span>
           <button className="icon-btn" onClick={dismissHint} aria-label="Dismiss">
