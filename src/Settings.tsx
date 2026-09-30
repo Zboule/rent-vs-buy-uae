@@ -69,7 +69,7 @@ function Chip({ label, color, dash, shadePct, onClick, onRemove }: {
       <button className="vchip-b" onClick={onClick}>
         {color && <span className="dot" style={{ background: color }} />}
         {dash != null && !color && <Swatch color="var(--label)" dash={dash} w={18} width={2} />}
-        {shadePct != null && !color && dash == null && <Swatch color={shade('var(--label)', shadePct)} w={18} width={3} />}
+        {shadePct != null && !color && dash == null && <Swatch color={shade('var(--glyph)', shadePct)} w={18} width={3.5} />}
         {label}
       </button>
       {onRemove && (
@@ -271,14 +271,14 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
                 {!trend && (
                   <span className="spark-wrap">
                     <Sparkline path={path} color={on ? color : 'var(--label3)'} />
-                    <span className="spark-l">{pctS(cum(path, years))}<small> in {years}y</small></span>
+                    <span className="spark-l">10 years</span>
                   </span>
                 )}
               </button>
               {!trend && (
                 <div className="scard-body">
                   <div className="scard-facts">
-                    <span>Prices {pctS(cum(path, 3))} in 3 years, {pctS(cum(path, 6))} in 6</span>
+                    <span>Prices {pctS(cum(path, 3))} after 3 years, {pctS(cum(path, 6))} after 6, {pctS(cum(path, 10))} after 10</span>
                   </div>
                   <div className="scard-ret">
                     <span>Your savings earn</span>

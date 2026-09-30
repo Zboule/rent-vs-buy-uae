@@ -131,7 +131,6 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   const inFocus = (l: Styled) => !fk || String(l.combo[fk]) === fv;
   const [pinned, setPinned] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [customHz, setCustomHz] = useState(false);
   const active = pinned ?? hover;
 
@@ -183,23 +182,18 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   if (atSell.length === 1) {
     const a = atSell[0].a;
     headline = Math.abs(a) < 1000 ? `About even if you sell in ${sellYear}` : `${a > 0 ? 'Buying' : 'Renting'} is cheaper by AED ${compact(Math.abs(a))} if you sell in ${sellYear}`;
-  } else if (wins === atSell.length) headline = `Buying wins in all ${atSell.length} cases by ${sellYear}`;
-  else if (wins === 0) headline = `Renting wins in all ${atSell.length} cases by ${sellYear}`;
-  else headline = `Buying wins in ${wins} of ${atSell.length} cases by ${sellYear}`;
+  } else if (wins === atSell.length) headline = `Buying wins on all ${atSell.length} lines by ${sellYear}`;
+  else if (wins === 0) headline = `Renting wins on all ${atSell.length} lines by ${sellYear}`;
+  else headline = `Buying wins on ${wins} of ${atSell.length} lines by ${sellYear}`;
 
-  // readout rows, grouped by scenario when the scenario and something else both vary
-  const group = enc.colorKey === 'cycle' && cnt.varying.length > 1;
-  // inside a scenario group the order is fixed (the line style is the identity), groups keep their order
-  const lineIdx = (l: Styled) => ls.findIndex((x) => x.id === l.id);
-  const ordered = group
-    ? CYCLES.flatMap((s) => atSell.filter((x) => x.l.combo.cycle === s.key).sort((a, b) => lineIdx(a.l) - lineIdx(b.l)))
-    : [...atSell].sort((a, b) => b.a - a.a);
-  // collapse per group, never hiding a whole group (the bad news stays visible)
-  const groupSize = (sc: string) => ordered.filter((x) => x.l.combo.cycle === sc).length;
-  const collapse = group && ordered.length > DENSE;
-  const shown = collapse
-    ? ordered.filter((x, i) => openGroups[String(x.l.combo.cycle)] || i === 0 || ordered[i - 1].l.combo.cycle !== x.l.combo.cycle)
-    : ordered;
+  // readout: a scenario × "everything else" matrix when the scenario and something else both vary,
+  // a plain list otherwise. The matrix names every line once (its row + its column).
+  const matrix = enc.colorKey === 'cycle' && cnt.varying.length > 1;
+  const colKey = (l: Styled) => Object.keys(l.combo).filter((k) => k !== 'cycle').map((k) => `${k}=${l.combo[k]}`).join('&');
+  const cols: { key: string; sample: Styled }[] = [];
+  for (const l of styled) if (!cols.some((x) => x.key === colKey(l))) cols.push({ key: colKey(l), sample: l });
+  const scenRows = CYCLES.filter((s) => atSell.some((x) => x.l.combo.cycle === s.key));
+  const flat = [...atSell].sort((a, b) => b.a - a.a);
   const dense = visible.length > DENSE;
   const idx = years.indexOf(sellYear);
   const rank = (k: string) => {
@@ -220,7 +214,8 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
         <button className="count" onClick={onCount}>
           <span className={over ? 'warn' : ''}>
             {over ? `${MAX_LINES} of ${cnt.total} lines shown` : `${cnt.total} line${cnt.total === 1 ? '' : 's'}`}
-            {desc.factors.length > 0 && !over && `: ${desc.factors.join(' × ')}`}
+            {desc.factors.length > 1 && !over && `: ${desc.factors.join(' × ')}`}
+            {desc.factors.length === 1 && !over && `, one per ${desc.factors[0].replace(/^\d+ /, '').replace('ways to buy', 'way to buy').replace(/s$/, '')}`}
             {desc.skipped > 0 && !over && ` (${desc.skipped} repeats skipped)`}
             {!desc.factors.length && ' · tap Compare on any option to add lines'}
           </span>
@@ -236,7 +231,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
           </button>
         ))}
         <button role="radio" aria-checked={isCustomHz} className={isCustomHz ? 'on' : ''} onClick={() => setCustomHz(true)} aria-label="Custom number of years">
-          {isCustomHz ? `${c.horizon}y` : 'Custom'}
+          {isCustomHz ? `${c.horizon}y` : 'Other'}
         </button>
       </div>
       <Sheet open={customHz} onClose={() => setCustomHz(false)} title="Years to show" subtitle="How far ahead the graph goes after buying.">
@@ -254,8 +249,8 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
             onMouseMove={(e) => onMove(e as never, false)}
             onClick={(e) => onMove(e as never, true)}
           >
-            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.06} ifOverflow="hidden" label={{ value: 'Buying cheaper', position: 'insideTopLeft', fill: 'var(--buy-ink)', fontSize: 12, fontWeight: 600 }} />
-            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.07} ifOverflow="hidden" label={{ value: 'Renting cheaper', position: 'insideBottomLeft', fill: 'var(--rent-ink)', fontSize: 12, fontWeight: 600 }} />
+            <ReferenceArea y1={0} y2={y1} fill="var(--buy)" fillOpacity={0.06} ifOverflow="hidden" />
+            <ReferenceArea y1={y0} y2={0} fill="var(--rent)" fillOpacity={0.07} ifOverflow="hidden" />
             <CartesianGrid vertical={false} stroke="var(--grid)" />
             <XAxis dataKey="year" tick={{ fill: 'var(--label2)', fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={8} height={28} />
             <YAxis domain={[y0, y1]} ticks={ticks} tickFormatter={signed} tick={{ fill: 'var(--label2)', fontSize: 12 }} width={48} tickLine={false} axisLine={false} allowDataOverflow />
@@ -289,6 +284,8 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
             })}
           </LineChart>
         </ResponsiveContainer>
+        {y1 > 0 && <span className="zone buy" style={{ top: 24 + PLOT_TOP }}>Buying cheaper</span>}
+        {y0 < 0 && <span className="zone rent" style={{ top: 24 + PLOT_BOTTOM - 26 }}>Renting cheaper</span>}
         <div className="x-title">Year you sell</div>
       </div>
 
@@ -305,58 +302,92 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
             </button>
           </div>
         )}
-        <ul className="ro-list">
-          {shown.map(({ l, a }, i) => {
-            const prev = shown[i - 1];
-            const header = group && (!prev || prev.l.combo.cycle !== l.combo.cycle);
-            const be = breakEvenOf(l.rows, (x) => x.advantage);
-            const even = Math.abs(a) < (l.combo.price as number) * 0.01;
-            const hi = active === l.id;
-            const tokens = nameOf(l, group);
-            const title = tokens[0] ?? 'Your assumptions';
-            const rest = tokens.slice(1);
-            const sc = String(l.combo.cycle);
-            return (
-              <li key={l.id} className="ro-li">
-                {header && (
-                  <button
-                    className="ro-group"
-                    onClick={() => setC((o) => ({ ...o, focus: o.focus === `cycle:${sc}` ? null : `cycle:${sc}` }))}
-                    aria-pressed={c.focus === `cycle:${sc}`}
-                  >
-                    <span className="dot" style={{ background: enc.colorOf('cycle', sc) ?? 'var(--label3)' }} />
-                    {shortScenario(sc)}
-                    <span className="ro-group-hint">{c.focus === `cycle:${sc}` ? 'Show all' : 'Show only'}</span>
-                  </button>
-                )}
-                <button className={`${hi ? 'ro hi' : active ? 'ro dim' : 'ro'}${header ? ' first' : ''}`} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
-                  <Swatch color={l.color} dash={l.dash} w={22} width={3} />
-                  <span className="ro-mid">
-                    <span className="ro-name">{title}</span>
-                    <span className="ro-sub">
-                      {rest.map((t) => <span key={t}>{t}</span>)}
-                      <span className="ro-be">{be != null ? `Buying wins after ${be} year${be === 1 ? '' : 's'}` : `Not within ${l.rows.length} years`}</span>
-                    </span>
-                    {hi && (
-                      <span className="ro-extra">
-                        {l.paymentYear > 0 ? `Mortgage AED ${abbr(l.paymentYear)} vs rent AED ${abbr(l.rentYear)} in year 1` : `Cash purchase, rent AED ${abbr(l.rentYear)} in year 1`}
+        {matrix ? (
+          <div className="mx-wrap">
+            <table className="mx">
+              <thead>
+                <tr>
+                  <th className="mx-corner">Scenario</th>
+                  {cols.map(({ key, sample }) => {
+                    const glyph = enc.line({ ...sample.combo, cycle: '__none' });
+                    return (
+                      <th key={key}>
+                        <Swatch color={enc.shadeKey ? glyph.color.replace(/var\(--s\d\)/, 'var(--glyph)') : 'var(--glyph)'} dash={glyph.dash} w={26} width={3} />
+                        <span className="mx-col">{nameOf(sample, true).join(' · ') || 'All'}</span>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {scenRows.map((sc) => (
+                  <tr key={sc.key}>
+                    <th>
+                      <button
+                        className="mx-scen"
+                        onClick={() => setC((o) => ({ ...o, focus: o.focus === `cycle:${sc.key}` ? null : `cycle:${sc.key}` }))}
+                        aria-pressed={c.focus === `cycle:${sc.key}`}
+                        aria-label={`Show only ${shortScenario(sc.key)}`}
+                      >
+                        <span className="dot" style={{ background: enc.colorOf('cycle', sc.key) ?? 'var(--label3)' }} />
+                        {shortScenario(sc.key)}
+                      </button>
+                    </th>
+                    {cols.map(({ key }) => {
+                      const cell = atSell.find((x) => x.l.combo.cycle === sc.key && colKey(x.l) === key);
+                      if (!cell) return <td key={key} />;
+                      const { l, a } = cell;
+                      const be = breakEvenOf(l.rows, (x) => x.advantage);
+                      const even = Math.abs(a) < (l.combo.price as number) * 0.01;
+                      const hi = active === l.id;
+                      return (
+                        <td key={key}>
+                          <button className={hi ? 'mx-cell hi' : active ? 'mx-cell dim' : 'mx-cell'} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
+                            <span className={even ? 'amt' : a >= 0 ? 'amt buy' : 'amt rent'}>{even ? '≈0' : signed(a)}</span>
+                            <span className="mx-be">{be != null ? `wins after ${be}y` : `not in ${l.rows.length}y`}</span>
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mx-foot">Positive: buying then selling cost less than renting. Tap a value to find its line; tap a scenario to show only it.</p>
+          </div>
+        ) : (
+          <ul className="ro-list">
+            {flat.map(({ l, a }) => {
+              const be = breakEvenOf(l.rows, (x) => x.advantage);
+              const even = Math.abs(a) < (l.combo.price as number) * 0.01;
+              const hi = active === l.id;
+              const tokens = nameOf(l, false);
+              return (
+                <li key={l.id} className="ro-li">
+                  <button className={hi ? 'ro hi' : active ? 'ro dim' : 'ro'} onClick={() => setPinned(pinned === l.id ? null : l.id)} aria-pressed={pinned === l.id}>
+                    <Swatch color={l.color} dash={l.dash} w={22} width={3} />
+                    <span className="ro-mid">
+                      <span className="ro-name">{tokens[0] ?? 'Your assumptions'}</span>
+                      <span className="ro-sub">
+                        {tokens.slice(1).map((t) => <span key={t}>{t}</span>)}
+                        <span className="ro-be">{be != null ? `Buying wins after ${be} year${be === 1 ? '' : 's'}` : `Not within ${l.rows.length} years`}</span>
                       </span>
-                    )}
-                  </span>
-                  <span className="ro-val">
-                    <span className={even ? 'amt' : a >= 0 ? 'amt buy' : 'amt rent'}>{even ? '≈0' : signed(a)}</span>
-                    <span className="verdict">{even ? 'about even' : a >= 0 ? 'buying cheaper' : 'renting cheaper'}</span>
-                  </span>
-                </button>
-                {collapse && header && groupSize(sc) > 1 && (
-                  <button className="ro-more" onClick={() => setOpenGroups((o) => ({ ...o, [sc]: !o[sc] }))} aria-expanded={!!openGroups[sc]}>
-                    {openGroups[sc] ? 'Show less' : `+${groupSize(sc) - 1} more`}
+                      {hi && (
+                        <span className="ro-extra">
+                          {l.paymentYear > 0 ? `Mortgage AED ${abbr(l.paymentYear)} vs rent AED ${abbr(l.rentYear)} in year 1` : `Cash purchase, rent AED ${abbr(l.rentYear)} in year 1`}
+                        </span>
+                      )}
+                    </span>
+                    <span className="ro-val">
+                      <span className={even ? 'amt' : a >= 0 ? 'amt buy' : 'amt rent'}>{even ? '≈0' : signed(a)}</span>
+                      <span className="verdict">{even ? 'about even' : a >= 0 ? 'buying cheaper' : 'renting cheaper'}</span>
+                    </span>
                   </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </>
   );
