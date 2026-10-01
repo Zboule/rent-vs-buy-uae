@@ -368,6 +368,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
   const q = query.trim().toLowerCase();
   const more = FIELDS.filter((f) => !ESSENTIALS.includes(f.key) && f.group !== 'Constant trend');
   const matches = q ? FIELDS.filter((f) => f.group !== 'Constant trend' && `${f.label} ${f.group} ${f.hint ?? ''}`.toLowerCase().includes(q)) : [];
+  const emMatch = !!q && 'emirate city dubai abu dhabi fees'.includes(q);
   const selectedScen = CYCLES.filter((x) => c.cycles.includes(x.key));
 
   const toggleScen = (k: ScenarioKey) =>
@@ -464,7 +465,6 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
 
   return (
     <section className="settings" id="settings" aria-label="Your assumptions">
-      <h2 className="settings-title">Your assumptions</h2>
 
       {!hintSeen && cnt.varying.every((d) => d.key === 'cycle') && (
         <div className="hintcard">
@@ -479,7 +479,6 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
       <div className="group">
         {scenRow}
         {trendRow}
-        {emRow}
         {ESSENTIALS.map((k) => row(FIELD[k]))}
       </div>
 
@@ -490,10 +489,12 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
       </div>
       {q ? (
         <div className="group">
-          {matches.length ? matches.map(row) : <p className="empty">No option matches “{query}”</p>}
+          {emMatch && emRow}
+          {matches.length ? matches.map(row) : !emMatch && <p className="empty">No option matches “{query}”</p>}
         </div>
       ) : (
         <div className="group">
+          {emRow}
           {GROUPS.map((g) => {
             const fs = more.filter((f) => f.group === g);
             if (!fs.length) return null;

@@ -424,3 +424,23 @@ button.mx-leaf[aria-pressed='true'] { color: var(--tint); font-weight: 650; }
 .switch:disabled { opacity: 0.6; cursor: default; }
 .switch-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 0.2s; }
 .switch.on .switch-knob { transform: translateX(18px); }
+
+/* desktop: the page itself does not scroll; the options column and the table under the graph each scroll on their own */
+@media (min-width: 1024px) {
+  .app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; padding-bottom: 0; }
+  .layout { flex: 1; min-height: 0; align-items: stretch; }
+  .side { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 0 6px 24px 0; }
+  /* on a short window the table would get no room: keep it at least ~4 rows tall and let the graph column scroll instead */
+  .main { position: static; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; overflow-y: auto; overscroll-behavior: contain; }
+  .chart-card { flex: 1 0 auto; min-height: 0; height: max(100%, 760px); display: flex; flex-direction: column; }
+  .chart-card > * { flex: none; }
+  .chart-card > .readout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .readout > * { flex: none; }
+  .readout > .mx-wrap, .readout > .ro-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .mx thead { position: sticky; top: 0; z-index: 2; }
+  .mx thead th { background: var(--surface); }
+  .foot { flex: none; margin: 0; padding: 8px 0 10px; }
+}
+
+/* the options column starts level with the graph card now that its title is gone */
+.settings > .group-title:first-child { margin-top: 0; }

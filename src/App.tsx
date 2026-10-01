@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { breakEvenOf } from './engine';
-import { CYCLES, FIELD, MAX_LINES, NOW, describeCount, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
+import { CYCLES, FIELD, MAX_LINES, NOW, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
 import { encoding, type Encoding } from './encoding';
 import { Settings, Stepper, useCount } from './Settings';
 import { Sheet, Swatch, fmtValue, useVisualViewport } from './ui';
@@ -45,7 +45,7 @@ export default function App() {
       <div className="layout">
         <main className="main">
           <div ref={chartRef} className="card chart-card">
-            <Graph c={c} setC={setC} lines={res.lines} enc={enc} cnt={cnt} onCount={toSettings} />
+            <Graph c={c} setC={setC} lines={res.lines} enc={enc} cnt={cnt} />
           </div>
         </main>
         <aside className="side">
@@ -125,8 +125,8 @@ const DENSE = 12; // above this many lines, lines draw lighter until one is focu
 
 /* ------------------------------------------------------------------ graph */
 
-function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
-  c: Config; setC: SetC; lines: LineDef[]; enc: Encoding; cnt: LineCount; onCount: () => void;
+function Graph({ c, setC, lines: ls, enc, cnt }: {
+  c: Config; setC: SetC; lines: LineDef[]; enc: Encoding; cnt: LineCount;
 }) {
   const styled: Styled[] = ls.map((l) => ({ ...l, ...enc.line(l.combo) }));
   // focus: "key:value" (one option value) or "col:<combination>" (one column of the matrix)
@@ -139,7 +139,6 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   const [pinned, setPinned] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [customHz, setCustomHz] = useState(false);
-  const [detail, setDetail] = useState(false);
   const active = pinned ?? hover;
 
   const buys = c.lists.buyYear;
@@ -181,22 +180,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
   if (!styled.length) return <p className="empty">Nothing to draw. Tick at least one scenario and one emirate.</p>;
 
   const atSell = visible.map((l) => ({ l, a: valueAt(l, sellYear) })).filter((x): x is { l: Styled; a: number } => x.a != null);
-  const wins = atSell.filter((x) => x.a > 0).length;
-  const desc = describeCount(c, cnt);
   const over = cnt.total > MAX_LINES;
-
-  // headline: the answer, not the chart's anatomy
-  let headline: string;
-  if (atSell.length === 1) {
-    const a = atSell[0].a;
-    headline = Math.abs(a) < 1000 ? `About even if you sell in ${sellYear}` : `${a > 0 ? 'Buying' : 'Renting'} is cheaper by AED ${compact(Math.abs(a))} if you sell in ${sellYear}`;
-  } else {
-    const onlyScen = cnt.varying.length === 1 && cnt.varying[0].key === 'cycle';
-    const noun = onlyScen ? 'scenarios' : 'cases';
-    if (wins === atSell.length) headline = `Buying wins in all ${atSell.length} ${noun} by ${sellYear}`;
-    else if (wins === 0) headline = `Renting wins in all ${atSell.length} ${noun} by ${sellYear}`;
-    else headline = `Buying wins in ${wins} of ${atSell.length} ${noun} by ${sellYear}`;
-  }
 
   // readout: a scenario × "everything else" matrix when the scenario and something else both vary,
   // a plain list otherwise. The matrix names every line once (its row + its column).
@@ -221,21 +205,6 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
 
   return (
     <>
-      <div className="hero">
-        <h2 className="verdict-h">{headline}</h2>
-        <button className="count" onClick={() => (desc.detail ? setDetail((d) => !d) : onCount())} aria-expanded={desc.detail ? detail : undefined}>
-          <span className={over ? 'warn' : ''}>
-            {over ? `${MAX_LINES} of ${cnt.total} lines shown` : `${cnt.total} line${cnt.total === 1 ? '' : 's'}`}
-            {desc.factors.length > 1 && !over && `: ${desc.factors.join(' × ')}`}
-            {desc.factors.length === 1 && !over && `, one per ${desc.factors[0].replace(/^\d+ /, '').replace('ways to buy', 'way to buy').replace(/s$/, '')}`}
-            {desc.skipped > 0 && !over && ` (${desc.skipped} repeats skipped)`}
-            {!desc.factors.length && ' · tap Compare on any option to add lines'}
-          </span>
-          <svg width="8" height="12" viewBox="0 0 8 12" aria-hidden className="count-chev"><path d="M2 2l4 4-4 4" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>
-        </button>
-        {desc.detail && detail && <div className="count-detail">{desc.detail}</div>}
-      </div>
-
       <div className="seg-hz" role="radiogroup" aria-label="Years to show">
         {PRESETS.map((h) => (
           <button key={h} role="radio" aria-checked={c.horizon === h} className={c.horizon === h ? 'on' : ''} onClick={() => setC((o) => ({ ...o, horizon: h, sell: null }))}>
@@ -253,7 +222,7 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
       </Sheet>
 
       <div className="plot" onMouseLeave={() => setHover(null)}>
-        <div className="y-title">{styled.length > 7 && !fk ? 'Tap a scenario or column below to isolate its lines' : 'How much buying saves you, AED'}</div>
+        <div className="y-title">{over ? `Showing ${MAX_LINES} of ${cnt.total} lines. ` : ''}{styled.length > 7 && !fk ? 'Tap a scenario or column below to isolate its lines' : 'How much buying saves you, AED'}</div>
         <ResponsiveContainer width="100%" height={CHART_H}>
           <LineChart
             data={data}
