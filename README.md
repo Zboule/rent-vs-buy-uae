@@ -24,13 +24,8 @@ varies, a scenario × way-to-buy matrix otherwise. Tap a scenario or a column to
 tap a value or the chart to highlight a line, step the sell year with ‹ ›. The whole view,
 including focus and sell year, lives in the URL hash.
 
-**Scenarios** bundle a yearly property price path and the return earned on the money not
-spent on the home (invested globally). Five weighted Abu Dhabi scenarios for a 6-year view
-(Oct 2026, war ongoing): boom (10%, haven rebound, 7%), tension (35%, priced-in conflict like
-Israel, 6%), bust (35%, Gulf cycle correction about -25% by 2030, 5.5%), broken haven (17%,
-expat exodus like Hong Kong, 6%: money abroad is unaffected), invasion (3%, Kuwait 1990 tail, 3%).
-Every return is editable; a "constant trend" scenario takes your own % values. A cash buyer ignores the
-mortgage options, so it does not multiply lines.
+**Scenarios** are property price paths only. The return on money not spent on the home is its own
+option ("Your savings earn"), so every scenario can be combined with several returns.
 
 ## What the number means
 

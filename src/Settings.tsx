@@ -11,7 +11,7 @@ import { Chevron, PlusIcon, Sheet, fmtValue, parseOne, toInput } from './ui';
 type SetC = (f: (o: Config) => Config) => void;
 
 const LOAN_KEYS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'valuation', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
-const ESSENTIALS = ['price', 'rent', 'rentGrowth', 'downPct', 'fixedRate'];
+const ESSENTIALS = ['price', 'rent', 'rentGrowth', 'investReturn', 'downPct', 'fixedRate'];
 
 /* ------------------------------------------------------------------ inputs */
 
@@ -271,7 +271,7 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
       return { ...o, cycles: CYCLES.map((x) => x.key).filter((x) => (x === k ? !on : o.cycles.includes(x))) };
     });
   return (
-    <Sheet open={open} onClose={onClose} tall title="Scenarios" subtitle="Each sets property prices year by year and what your savings earn. Every ticked scenario draws its own lines.">
+    <Sheet open={open} onClose={onClose} tall title="Scenarios" subtitle="Each sets how property prices move year by year. Every ticked scenario draws its own lines.">
       <div className="scards">
         {CYCLES.map((sc, i) => {
           const on = c.cycles.includes(sc.key);
@@ -301,18 +301,6 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
                   <div className="scard-facts">
                     <span>Prices {pctS(cum(path, 3))} after 3 years, {pctS(cum(path, 6))} after 6, {pctS(cum(path, 10))} after 10</span>
                   </div>
-                  <div className="scard-ret">
-                    <span>Your savings earn</span>
-                    <Stepper
-                      value={c.scenRet[sc.key]}
-                      step={0.005}
-                      min={-0.05}
-                      max={0.2}
-                      fmt={(v) => `${+(v * 100).toFixed(1)}% a year`}
-                      label={`${sc.label} investment return`}
-                      onChange={(v) => setC((o) => ({ ...o, scenRet: { ...o.scenRet, [sc.key]: v } }))}
-                    />
-                  </div>
                   <button className="disclose" onClick={() => setExpanded(expanded === sc.key ? null : sc.key)} aria-expanded={expanded === sc.key}>
                     Year by year <Chevron open={expanded === sc.key} />
                   </button>
@@ -340,7 +328,6 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
                   {!on && <p className="opt-hint">Turn on to set your own trend.</p>}
                   <div className="group inset">
                     <OptionRow f={FIELD.priceGrowth} c={c} setC={setC} enc={enc} openSheet={openSheet} disabled={!on} />
-                    <OptionRow f={FIELD.investReturn} c={c} setC={setC} enc={enc} openSheet={openSheet} disabled={!on} />
                   </div>
                 </div>
               )}
@@ -398,7 +385,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
     <div id="opt-cycle" key="cycle" className={`opt${selectedScen.length > 1 ? ' varying' : ''}`}>
       <RowHead
         title="Scenario"
-        hint="Property prices year by year + what your savings earn"
+        hint="How property prices move, year by year"
         action={
           <button className="plus" onClick={() => setScen(true)} aria-label="Edit scenarios">
             <span className="plus-t">Edit</span>

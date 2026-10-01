@@ -50,7 +50,7 @@ const FIELD_LIST: FieldDef[] = [
   { key: 'rentFollows', label: 'Rents follow price swings by', kind: 'pct', group: 'Market', hint: 'In 2009 rents fell ~30% while prices fell ~50%: about 60%', tag: (v) => `rents follow ${pc(v)}` },
   { key: 'priceGrowth', label: 'Prices change per year', kind: 'pct', group: 'Constant trend', tag: (v) => `prices ${sg(v)}/yr` },
 
-  { key: 'investReturn', label: 'Your savings earn', kind: 'pct', group: 'Constant trend', hint: 'Per year, on money not spent on the home', tag: (v) => `invest ${pc(v)}` },
+  { key: 'investReturn', label: 'Your savings earn', kind: 'pct', group: 'Market', hint: 'Per year, on the down payment, fees and monthly gap you keep invested', tag: (v) => `invest ${pc(v)}` },
   { key: 'investTax', label: 'Tax on investment returns', kind: 'pct', group: 'Market', hint: '0 in the UAE', tag: (v) => `tax ${pc(v)}` },
 
   { key: 'buyAgentPct', label: 'Agent commission', kind: 'pct', group: 'Buying costs', hint: '+ 5% VAT', tag: (v) => `buy agent ${pc(v)}` },
@@ -86,7 +86,7 @@ const EXTRA: Record<string, Partial<FieldDef>> = {
   moveCost: { noun: 'moving costs' },
   rentFollows: { noun: 'rent sensitivities', suggest: [0, 0.3, 0.6, 1] },
   priceGrowth: { noun: 'price trends', suggest: [-0.02, 0, 0.03, 0.05, 0.07] },
-  investReturn: { noun: 'returns', suggest: [0.04, 0.06, 0.08, 0.1] },
+  investReturn: { noun: 'returns', essential: true, suggest: [0.03, 0.04, 0.06, 0.08, 0.1] },
   investTax: { noun: 'tax rates' },
   buyAgentPct: { noun: 'buy agent fees' },
   bankFeePct: { noun: 'bank fees' },
@@ -138,7 +138,6 @@ export interface Config {
   emirates: Emirate[];
   cycles: ScenarioKey[];
   emFees: Record<Emirate, Record<string, number>>;
-  scenRet: Record<string, number>; // each scenario's investment return
   off: Record<string, number[]>; // values kept in the list but switched off (not drawn)
   horizon: number; // years shown after the (latest) buy year
   sell: number | null; // the readout's sell year (calendar), null = end of horizon
@@ -161,7 +160,6 @@ export const DEFAULT_CONFIG: Config = {
   emFees: Object.fromEntries(
     EMIRATES.map((e) => [e, Object.fromEntries(EM_FIELDS.map((f) => [f.key, ({ ...P, ...PRESETS[e] } as Record<string, number>)[f.key]]))]),
   ) as Record<Emirate, Record<string, number>>,
-  scenRet: Object.fromEntries(SCENARIOS.map((x) => [x.key, x.ret])),
   off: {},
   horizon: 10,
   sell: null,
@@ -203,7 +201,7 @@ const ignored = (combo: Record<string, number | string>) => [
   ...((combo.downPct as number) >= 1 ? LOAN_KEYS : []),
   ...((combo.moveEveryYears as number) === 0 ? ['rentAgentPct', 'moveCost'] : []),
   ...((combo.fixedYears as number) >= (combo.term as number) ? ['varRate'] : []),
-  ...(combo.cycle === 'trend' ? ['rentFollows'] : ['priceGrowth', 'investReturn']),
+  ...(combo.cycle === 'trend' ? ['rentFollows'] : ['priceGrowth']),
 ];
 const LOAN_KEYS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'valuation', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
 
@@ -224,7 +222,7 @@ function dropCause(c: Config, combo: Record<string, number | string>): 'cash' | 
   const bad = ignored(combo).filter((k) => combo[k] !== c.lists[k][0]);
   if (!bad.length) return null;
   if ((combo.downPct as number) >= 1 && bad.some((k) => LOAN_KEYS.includes(k))) return 'cash';
-  if (bad.some((k) => k === 'priceGrowth' || k === 'investReturn' || k === 'rentFollows')) return 'trend';
+  if (bad.some((k) => k === 'priceGrowth' || k === 'rentFollows')) return 'trend';
   return 'other';
 }
 
@@ -274,7 +272,7 @@ export function lines(c: Config): { lines: LineDef[]; total: number; varying: Di
       ...c.emFees[em],
       emirate: em,
       scenario: combo.cycle as ScenarioKey,
-      investReturn: combo.cycle === 'trend' ? combo.investReturn : c.scenRet[combo.cycle as string],
+      investReturn: combo.investReturn,
       // every line runs to the same last sell year: latest buy year + horizon
       maxHold: maxBuy + c.horizon - X,
     } as unknown as Params;
@@ -314,10 +312,6 @@ export function readConfig(): Config {
       const v = q.get(`${e}.${f.key}`);
       if (v != null && Number.isFinite(Number(v))) c.emFees[e][f.key] = Number(v);
     }
-  for (const x of SCENARIOS) {
-    const v = q.get(`ret.${x.key}`);
-    if (v != null && Number.isFinite(Number(v))) c.scenRet[x.key] = Number(v);
-  }
   const hz = Number(q.get('horizon'));
   if (q.get('horizon') && Number.isFinite(hz)) c.horizon = Math.max(1, Math.min(35, Math.round(hz)));
   for (const f of FIELDS) {
@@ -341,7 +335,6 @@ export function writeConfig(c: Config) {
   if (!same(c.cycles, d.cycles)) q.set('cy', c.cycles.join('_'));
   for (const e of EMIRATES)
     for (const f of EM_FIELDS) if (c.emFees[e][f.key] !== d.emFees[e][f.key]) q.set(`${e}.${f.key}`, String(c.emFees[e][f.key]));
-  for (const x of SCENARIOS) if (c.scenRet[x.key] !== d.scenRet[x.key]) q.set(`ret.${x.key}`, String(c.scenRet[x.key]));
   if (c.horizon !== d.horizon) q.set('horizon', String(c.horizon));
   for (const [k, vs] of Object.entries(c.off)) if (vs.length) q.set(`off.${k}`, vs.join('_'));
   if (c.sell != null) q.set('sell', String(c.sell));
@@ -353,7 +346,7 @@ export function writeConfig(c: Config) {
 /* ---------------------------------------------------------------- plain-language count */
 
 const LOAN_OPTS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'valuation', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
-const TREND_OPTS = ['priceGrowth', 'investReturn'];
+const TREND_OPTS = ['priceGrowth'];
 const pcts = (vs: number[]) => vs.map((v) => `${+(v * 100).toFixed(2)}%`);
 const orList = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
 
