@@ -506,8 +506,9 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
 
       <button className="btn plain reset" onClick={() => setC(() => structuredClone(DEFAULT_CONFIG))}>Reset everything</button>
 
-      <ValueSheet s={sheet} c={c} setC={setC} onClose={() => setSheet(null)} />
       <ScenarioEditor open={scen} onClose={() => setScen(false)} c={c} setC={setC} enc={enc} openSheet={setSheet} />
+      {/* after the scenario editor: its Add opens this sheet, which must stack on top */}
+      <ValueSheet s={sheet} c={c} setC={setC} onClose={() => setSheet(null)} />
     </section>
   );
 }
