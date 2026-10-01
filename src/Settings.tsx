@@ -364,7 +364,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
 
   const vset = new Set(cnt.varying.map((d) => d.key));
   const q = query.trim().toLowerCase();
-  const more = FIELDS.filter((f) => !ESSENTIALS.includes(f.key) && f.group !== 'Constant trend' && !vset.has(f.key));
+  const more = FIELDS.filter((f) => !ESSENTIALS.includes(f.key) && f.group !== 'Constant trend');
   const matches = q ? FIELDS.filter((f) => f.group !== 'Constant trend' && `${f.label} ${f.group} ${f.hint ?? ''}`.toLowerCase().includes(q)) : [];
   const selectedScen = CYCLES.filter((x) => c.cycles.includes(x.key));
   const values = (n: number) => <span className="times">{n} values</span>;
@@ -403,45 +403,33 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
           <span className="opt-label">Emirate{emMany && values(2)}</span>
           <span className="opt-hint">Sets purchase and housing fees</span>
         </div>
-        {!emMany && (
-          <span className="seg">
-            {EMIRATES.map((e) => (
-              <button key={e} className={c.emirates[0] === e ? 'on' : ''} aria-pressed={c.emirates[0] === e} onClick={() => setC((o) => ({ ...o, emirates: [e] }))}>
+        <span className="toggles" role="group" aria-label="Emirates to include">
+          {EMIRATES.map((e) => {
+            const on = c.emirates.includes(e);
+            const sw = on && emMany ? enc.colorOf('emirate', e) : null;
+            return (
+              <button
+                key={e}
+                className={on ? 'tog on' : 'tog'}
+                aria-pressed={on}
+                title={on && !emMany ? 'Keep at least one emirate' : undefined}
+                onClick={() =>
+                  setC((o) => {
+                    if (on && o.emirates.length === 1) return o;
+                    return { ...o, emirates: EMIRATES.filter((x) => (x === e ? !on : o.emirates.includes(x))) };
+                  })
+                }
+              >
+                {sw && <span className="dot" style={{ background: sw }} />}
+                {on && !sw && <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden><path d="M2.5 6.2l2.4 2.4 4.6-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                 {EM_LABEL[e]}
               </button>
-            ))}
-          </span>
-        )}
-        {!emMany && (
-          <button className="plus" onClick={() => setC((o) => ({ ...o, emirates: [...EMIRATES] }))} aria-label="Compare both emirates">
-            <PlusIcon />
-            <span className="plus-t">Compare</span>
-          </button>
-        )}
+            );
+          })}
+        </span>
       </div>
-      {emMany && (
-        <div className="chips">
-          {EMIRATES.map((e) => (
-            <Chip
-              key={e}
-              label={EM_LABEL[e]}
-              color={enc.colorOf('emirate', e)}
-              dash={enc.dashOf('emirate', e)}
-              shadePct={enc.shadeOf('emirate', e)}
-              onClick={() => {}}
-              onRemove={() => setC((o) => ({ ...o, emirates: o.emirates.filter((x) => x !== e) }))}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
-
-  const comparing = [
-    ...(selectedScen.length > 1 ? [scenRow] : []),
-    ...(emMany ? [emRow] : []),
-    ...FIELDS.filter((f) => vset.has(f.key)).map(row),
-  ];
 
   return (
     <section className="settings" id="settings" aria-label="Your assumptions">
@@ -456,18 +444,11 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
         </div>
       )}
 
-      {comparing.length > 0 && (
-        <>
-          <h3 className="group-title">Comparing <span className="gt-sub">each value draws its own lines</span></h3>
-          <div className="group">{comparing}</div>
-        </>
-      )}
-
-      <h3 className="group-title">{comparing.length ? 'Fixed' : 'Essentials'}</h3>
+      <h3 className="group-title">Essentials</h3>
       <div className="group">
-        {selectedScen.length <= 1 && scenRow}
-        {!emMany && emRow}
-        {ESSENTIALS.filter((k) => !vset.has(k)).map((k) => row(FIELD[k]))}
+        {scenRow}
+        {emRow}
+        {ESSENTIALS.map((k) => row(FIELD[k]))}
       </div>
 
       <h3 className="group-title">More options</h3>
@@ -484,12 +465,13 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
           {GROUPS.map((g) => {
             const fs = more.filter((f) => f.group === g);
             if (!fs.length) return null;
-            const open = openGroups[g] ?? false;
+            const nVar = fs.filter((f) => vset.has(f.key)).length;
+            const open = openGroups[g] ?? nVar > 0;
             return (
               <div key={g} className="collapsible">
                 <button className="group-head" onClick={() => setOpenGroups((o) => ({ ...o, [g]: !open }))} aria-expanded={open}>
                   <span className="gh-t">{g}</span>
-                  <span className="gh-s">{fs.length} option{fs.length > 1 ? 's' : ''}</span>
+                  <span className="gh-s">{fs.length} option{fs.length > 1 ? 's' : ''}{nVar ? ` · ${nVar} compared` : ''}</span>
                   <Chevron open={open} />
                 </button>
                 {open && fs.map(row)}

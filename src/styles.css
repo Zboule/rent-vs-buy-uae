@@ -398,3 +398,9 @@ button.mx-leaf[aria-pressed='true'] { color: var(--tint); font-weight: 650; }
 .mx tbody th { vertical-align: middle; }
 .scard-body { padding-left: 50px !important; }
 @media (max-width: 480px) { .scard-body { padding-left: 50px !important; } }
+
+/* emirate on/off toggles: same control whether one or both are on */
+.toggles { display: inline-flex; gap: 6px; flex: none; }
+.tog { display: inline-flex; align-items: center; gap: 5px; height: 36px; padding: 0 12px; border-radius: 18px; font-size: 14px; font-weight: 500; color: var(--label2); background: transparent; box-shadow: inset 0 0 0 1px var(--sep); position: relative; }
+.tog::after { content: ''; position: absolute; inset: -4px -2px; }
+.tog.on { background: var(--tint-fill); color: var(--tint); font-weight: 600; box-shadow: none; }
