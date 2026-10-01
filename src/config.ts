@@ -156,7 +156,7 @@ export const DEFAULT_CONFIG: Config = {
     investReturn: [0.06],
   },
   emirates: ['DXB'],
-  cycles: ['veryGood', 'good', 'neutral', 'bleed', 'bad', 'chaos', 'veryBad'],
+  cycles: ['boom', 'tension', 'bust', 'broken', 'invasion'],
   emFees: Object.fromEntries(
     EMIRATES.map((e) => [e, Object.fromEntries(EM_FIELDS.map((f) => [f.key, ({ ...P, ...PRESETS[e] } as Record<string, number>)[f.key]]))]),
   ) as Record<Emirate, Record<string, number>>,

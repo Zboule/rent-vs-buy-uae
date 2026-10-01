@@ -25,10 +25,11 @@ tap a value or the chart to highlight a line, step the sell year with ‹ ›. T
 including focus and sell year, lives in the URL hash.
 
 **Scenarios** bundle a yearly property price path and the return earned on the money not
-spent on the home (invested globally): very good (boom resumes, 7%), good (soft landing, 6.5%),
-neutral (Fitch correction then recovery, 6%), slow bleed (-2%/yr, 6%), bad (-20% then drift,
-5.5%), regional chaos (lost decade, 6%: money abroad is unaffected), very bad (2008-style global
-crash, 3%). Every return is editable; a "constant trend" scenario takes your own % values. A cash buyer ignores the
+spent on the home (invested globally). Five weighted Abu Dhabi scenarios for a 6-year view
+(Oct 2026, war ongoing): boom (10%, haven rebound, 7%), tension (35%, priced-in conflict like
+Israel, 6%), bust (35%, Gulf cycle correction about -25% by 2030, 5.5%), broken haven (17%,
+expat exodus like Hong Kong, 6%: money abroad is unaffected), invasion (3%, Kuwait 1990 tail, 3%).
+Every return is editable; a "constant trend" scenario takes your own % values. A cash buyer ignores the
 mortgage options, so it does not multiply lines.
 
 ## What the number means

@@ -6,10 +6,10 @@ import { DEFAULTS, PRESETS, simulateBuy, type Params } from '../src/engine.ts';
 const base = { ...DEFAULTS, price: 3_000_000, rent: 240_000, rentGrowth: 0.05, maxHold: 15 } as Params;
 const cases: Record<string, [Params, number]> = {
   dubai_trend_20down: [{ ...base, scenario: 'trend', priceGrowth: 0.03, investReturn: 0.06 }, 0],
-  abudhabi_bad_20y: [{ ...base, ...PRESETS.AUH, emirate: 'AUH', scenario: 'bad', investReturn: 0.055, term: 20 }, 0],
-  dubai_cash_neutral: [{ ...base, scenario: 'neutral', investReturn: 0.06, downPct: 1 }, 0],
-  abudhabi_crash_buy_in_2y: [{ ...base, ...PRESETS.AUH, emirate: 'AUH', scenario: 'veryBad', investReturn: 0.03 }, 2],
-  dubai_chaos_50down_15y: [{ ...base, scenario: 'chaos', investReturn: 0.06, downPct: 0.5, term: 15 }, 0],
+  abudhabi_bust_20y: [{ ...base, ...PRESETS.AUH, emirate: 'AUH', scenario: 'bust', investReturn: 0.055, term: 20 }, 0],
+  dubai_cash_tension: [{ ...base, scenario: 'tension', investReturn: 0.06, downPct: 1 }, 0],
+  abudhabi_invasion_buy_in_2y: [{ ...base, ...PRESETS.AUH, emirate: 'AUH', scenario: 'invasion', investReturn: 0.03 }, 2],
+  dubai_broken_50down_15y: [{ ...base, scenario: 'broken', investReturn: 0.06, downPct: 0.5, term: 15 }, 0],
 };
 const out: Record<string, number[]> = {};
 for (const [k, [p, X]] of Object.entries(cases)) out[k] = simulateBuy(p, X, []).rows.map((r) => Math.round(r.advantage));

@@ -64,7 +64,7 @@ export interface Params {
 
 export const VAT = 0.05;
 
-export type ScenarioKey = 'trend' | 'veryGood' | 'good' | 'neutral' | 'bad' | 'veryBad' | 'chaos' | 'bleed';
+export type ScenarioKey = 'trend' | 'boom' | 'tension' | 'bust' | 'broken' | 'invasion';
 
 export interface Scenario {
   key: ScenarioKey;
@@ -83,40 +83,31 @@ export interface Scenario {
 // correction from 2026). History: 2008-09 fell 45-60% peak to trough in ~18 months; 2014-2020 slid
 // 25-30% over ~6 years. Rents follow price swings partly (see rentFollows).
 export const SCENARIOS: Scenario[] = [
+  // Abu Dhabi 6-year view (Oct 2026): five weighted scenarios, paths from a 2026 = 100 index
   {
-    key: 'veryGood', label: 'Very good: boom resumes',
-    note: 'Conflict ends fast, inflows of wealthy residents return, supply is absorbed. Global markets strong.',
-    path: [0.07, 0.08, 0.07, 0.06, 0.05, 0.05], tail: 0.04, ret: 0.07,
+    key: 'boom', label: 'Boom (10%): haven rebound',
+    note: 'The war ends decisively, Iran normalises and capital floods into the Gulf. Index 105, 115, 125, 135, 145, 155 by 2032.',
+    path: [0.05, 0.0952, 0.087, 0.08, 0.0741, 0.069], tail: 0.04, ret: 0.07,
   },
   {
-    key: 'good', label: 'Good: soft landing',
-    note: 'A small dip as the supply wave lands, then steady growth.',
-    path: [-0.02, 0.02, 0.04, 0.05, 0.05, 0.04], tail: 0.035, ret: 0.065,
+    key: 'tension', label: 'Tension (35%): priced-in conflict',
+    note: 'Like Israel: the conflict freezes within 1-2 years, a small dip, then 3-5% a year. Index 95, 96, 100, 104, 108, 112 by 2032.',
+    path: [-0.05, 0.0105, 0.0417, 0.04, 0.0385, 0.037], tail: 0.035, ret: 0.06,
   },
   {
-    key: 'neutral', label: 'Neutral: Fitch correction, recovery',
-    note: 'The 10-15% correction the rating agencies expect over 2 years, then back to normal growth.',
-    path: [-0.07, -0.06, 0.0, 0.03, 0.04, 0.04], tail: 0.03, ret: 0.06,
+    key: 'bust', label: 'Bust (35%): Gulf cycle correction',
+    note: 'Like Qatar 2017 or Abu Dhabi 2015-2020: about -25% by 2030 as the war drags and supply lands, recovery only starting. Index 93, 84, 77, 75, 78, 81 by 2032.',
+    path: [-0.07, -0.0968, -0.0833, -0.026, 0.04, 0.0385], tail: 0.03, ret: 0.055,
   },
   {
-    key: 'bleed', label: 'Slow bleed: -2% a year for good',
-    note: 'No crash, just a long structural decline (oversupply that never clears).',
-    path: [], tail: -0.02, ret: 0.06,
+    key: 'broken', label: 'Broken haven (17%): expat exodus',
+    note: 'Like Hong Kong 2019-2024: repeated strikes, Hormuz stays shut, expats leave, no recovery for years. Money invested abroad is unaffected. Index 85, 72, 65, 62, 62, 63 by 2032.',
+    path: [-0.15, -0.1529, -0.0972, -0.0462, 0.0, 0.0161], tail: 0.01, ret: 0.06,
   },
   {
-    key: 'bad', label: 'Bad: -20% then slow decline',
-    note: 'Like 2014-2020: a 20% fall over 3 years, then years of drift lower before a weak recovery.',
-    path: [-0.1, -0.07, -0.05, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02], tail: 0.025, ret: 0.055,
-  },
-  {
-    key: 'chaos', label: 'Regional chaos: lost decade',
-    note: 'The conflict drags on, expats leave, no recovery for 10 years. Money invested abroad is unaffected.',
-    path: [-0.12, -0.1, -0.07, -0.05, -0.04, -0.03, -0.02, -0.01, -0.01, 0.0], tail: 0.01, ret: 0.06,
-  },
-  {
-    key: 'veryBad', label: 'Very bad: 2008-style crash',
-    note: 'A global crisis like 2008: prices fall ~45% within 2 years, then a slow rebuild, and your investments suffer too.',
-    path: [-0.25, -0.22, -0.04, 0.0, 0.03, 0.05, 0.06, 0.06], tail: 0.04, ret: 0.03,
+    key: 'invasion', label: 'Invasion (3%): Kuwait 1990 tail',
+    note: 'Direct attack or occupation: prices collapse and the market freezes, then rebuild after it ends. A global oil shock hurts investments too. Index 55, 40, 40, 45, 50, 55 by 2032.',
+    path: [-0.45, -0.2727, 0.0, 0.125, 0.1111, 0.1], tail: 0.04, ret: 0.03,
   },
   {
     key: 'trend', label: 'Constant trend (your %)',
