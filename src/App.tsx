@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { breakEvenOf } from './engine';
-import { CYCLES, FIELD, MAX_LINES, NOW, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
+import { FIELD, scenName, MAX_LINES, NOW, lines, readConfig, writeConfig, type Config, type LineCount, type LineDef } from './config';
 import { encoding, type Encoding } from './encoding';
 import { Settings, Stepper, useCount } from './Settings';
 import { Sheet, Swatch, fmtValue, useVisualViewport } from './ui';
 import { abbr } from './format';
+import { HoverProvider, lineUses, useHover } from './hover';
 
 type SetC = (f: (o: Config) => Config) => void;
 
@@ -37,6 +38,7 @@ export default function App() {
   const toChart = () => chartRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   return (
+    <HoverProvider>
     <div className="app">
       <header className="topbar">
         <h1>Rent or buy, UAE</h1>
@@ -64,6 +66,7 @@ export default function App() {
         ) : null}
       </div>
     </div>
+    </HoverProvider>
   );
 }
 
@@ -108,9 +111,8 @@ function niceTicks(lo: number, hi: number, target = 5): number[] {
 const compact = (a: number) =>
   a >= 1e6 ? `${+(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${Math.round(a / 1e3)}k` : String(Math.round(a));
 const signed = (v: number) => (Math.round(v) === 0 ? '0' : `${v > 0 ? '+' : '−'}${compact(Math.abs(v))}`);
-const shortScenario = (key: string) => CYCLES.find((x) => x.key === key)?.label.split(':')[0] ?? key;
-// even shorter, for the phone matrix
-const tinyScenario = (key: string) => (key === 'trend' ? 'Trend' : shortScenario(key));
+const shortScenario = (key: string) => scenName(key);
+const tinyScenario = shortScenario;
 
 interface Styled extends LineDef { color: string; dash: string; width: number }
 
@@ -137,6 +139,7 @@ function Graph({ c, setC, lines: ls, enc, cnt }: {
   const [hover, setHover] = useState<string | null>(null);
   const [customHz, setCustomHz] = useState(false);
   const active = pinned ?? hover;
+  const hv = useHover();
 
   const buys = c.lists.buyYear;
   const minBuy = Math.min(...buys);
@@ -153,6 +156,18 @@ function Graph({ c, setC, lines: ls, enc, cnt }: {
     return d;
   });
   const visible = styled.filter(inFocus);
+
+  // hovered line -> light its chips in the options panel
+  const setHvLine = hv.setLine;
+  useEffect(() => {
+    const l = active ? ls.find((x) => x.id === active) : undefined;
+    setHvLine(l ? { combo: l.combo, keys: Object.keys(l.parts) } : null);
+  }, [active, ls, setHvLine]);
+  useEffect(() => () => setHvLine(null), [setHvLine]);
+  // hovered chip -> light every line that uses its value (unless no drawn line does)
+  const chip = hv.chip;
+  const chipHits = chip ? new Set(visible.filter((l) => lineUses(l.combo, Object.keys(l.parts), chip)).map((l) => l.id)) : null;
+  const chipLit = chipHits && chipHits.size > 0 && chipHits.size < visible.length ? chipHits : null;
   const vals = visible.flatMap((l) => l.rows.map((r) => r.advantage));
   const ticks = niceTicks(Math.min(0, ...vals), Math.max(0, ...vals));
   const y0 = ticks[0];
@@ -184,7 +199,7 @@ function Graph({ c, setC, lines: ls, enc, cnt }: {
   const matrix = enc.colorKey === 'cycle' && cnt.varying.length > 1;
   const cols: { key: string; sample: Styled }[] = [];
   for (const l of styled) if (!cols.some((x) => x.key === colKey(l))) cols.push({ key: colKey(l), sample: l });
-  const scenRows = CYCLES.filter((s) => atSell.some((x) => x.l.combo.cycle === s.key));
+  const scenRows = [...new Set(atSell.map((x) => String(x.l.combo.cycle)))].map((key) => ({ key }));
   const flat = [...atSell].sort((a, b) => b.a - a.a);
   const dense = visible.length > DENSE;
   const idx = years.indexOf(sellYear);
@@ -239,13 +254,14 @@ function Graph({ c, setC, lines: ls, enc, cnt }: {
               const hi = active === l.id;
               const focusGroup = fk === 'cycle';
               // a hovered line only lifts itself (the rest stay readable); a tapped one dims the rest harder
-              const op = !on ? 0.06 : active ? (hi ? 1 : pinned ? 0.3 : 0.55) : dense && !focusGroup ? 0.6 : 1;
+              const lit = chipLit?.has(l.id);
+              const op = !on ? 0.06 : chipLit ? (lit ? 1 : 0.12) : active ? (hi ? 1 : pinned ? 0.3 : 0.55) : dense && !focusGroup ? 0.6 : 1;
               return (
                 <Line
                   key={l.id}
                   dataKey={l.id}
                   stroke={l.color}
-                  strokeWidth={hi ? Math.max(3.5, l.width + 1) : l.width}
+                  strokeWidth={hi || lit ? Math.max(3, l.width + 0.8) : l.width}
                   strokeDasharray={l.dash || undefined}
                   strokeOpacity={op}
                   dot={(p: { cx?: number; cy?: number; payload?: { year: number }; index?: number }) =>

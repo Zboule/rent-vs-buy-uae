@@ -166,6 +166,60 @@ export const DEFAULT_CONFIG: Config = {
   focus: null,
 };
 
+/* ---------------------------------------------------------------- scenarios */
+
+// each Constant trend value is a scenario of its own: "trend:0.03"
+export const trendKey = (v: number) => `trend:${v}`;
+export const isTrend = (k: number | string) => String(k).startsWith('trend');
+export const trendOf = (k: number | string) => Number(String(k).slice(6));
+/** a scenario's short name: "Boom (10%)", "Trend +3%/yr" */
+export const scenName = (k: number | string) =>
+  isTrend(k) ? `Trend ${sg(trendOf(k))}/yr` : (CYCLES.find((x) => x.key === k)?.label.split(':')[0] ?? String(k));
+/** the scenario keys drawn, in order: the named ones, then one per Constant trend value */
+export const scenKeys = (c: Config): string[] => [
+  ...CYCLES.filter((x) => x.key !== 'trend' && c.cycles.includes(x.key)).map((x) => x.key),
+  ...(c.cycles.includes('trend') ? c.lists.priceGrowth.map(trendKey) : []),
+];
+/** every trend value the user has, on or off */
+export const trendValues = (c: Config) => [...new Set([...c.lists.priceGrowth, ...(c.off.priceGrowth ?? [])])].sort((a, b) => a - b);
+export const trendOn = (c: Config, v: number) => c.cycles.includes('trend') && c.lists.priceGrowth.includes(v);
+const withTrend = (o: Config, on: boolean): ScenarioKey[] =>
+  on ? (o.cycles.includes('trend') ? o.cycles : [...o.cycles, 'trend']) : o.cycles.filter((x) => x !== 'trend');
+const setTrend = (o: Config, on: number[], cyOn: boolean): Config => {
+  const all = [...new Set([...o.lists.priceGrowth, ...(o.off.priceGrowth ?? []), ...on])];
+  const lists = on.length ? [...on].sort((a, b) => a - b) : all.slice(0, 1);
+  return {
+    ...o,
+    cycles: withTrend(o, cyOn && on.length > 0),
+    lists: { ...o.lists, priceGrowth: lists.length ? lists : o.lists.priceGrowth },
+    off: { ...o.off, priceGrowth: all.filter((x) => !lists.includes(x)) },
+  };
+};
+/** switch one trend value on or off, like any scenario chip (at least one scenario stays on) */
+export function toggleTrend(o: Config, v: number): Config {
+  const onNow = o.cycles.includes('trend') ? o.lists.priceGrowth : [];
+  if (onNow.includes(v)) {
+    if (scenKeys(o).length === 1) return o;
+    return setTrend(o, onNow.filter((x) => x !== v), true);
+  }
+  return setTrend(o, [...onNow, v], true);
+}
+/** add a trend value, switched on */
+export const addTrend = (o: Config, v: number): Config => setTrend(o, [...new Set([...(o.cycles.includes('trend') ? o.lists.priceGrowth : []), v])], true);
+/** delete a trend value for good */
+export function removeTrend(o: Config, v: number): Config {
+  const onNow = (o.cycles.includes('trend') ? o.lists.priceGrowth : []).filter((x) => x !== v);
+  if (o.cycles.includes('trend') && !onNow.length && scenKeys(o).length === 1) return o;
+  const r = setTrend({ ...o, lists: { ...o.lists, priceGrowth: o.lists.priceGrowth.filter((x) => x !== v) }, off: { ...o.off, priceGrowth: (o.off.priceGrowth ?? []).filter((x) => x !== v) } }, onNow, true);
+  return r;
+}
+/** switch a named scenario on or off (at least one scenario stays on) */
+export function toggleScenario(o: Config, k: ScenarioKey): Config {
+  const on = o.cycles.includes(k);
+  if (on && scenKeys(o).length === 1) return o;
+  return { ...o, cycles: CYCLES.map((x) => x.key).filter((x) => (x === k ? !on : o.cycles.includes(x))) };
+}
+
 /* ---------------------------------------------------------------- dimensions */
 
 export interface Dim {
@@ -178,9 +232,10 @@ export interface Dim {
 
 export function dims(c: Config): Dim[] {
   return [
-    { key: 'cycle', label: 'Scenario', noun: 'scenarios', values: CYCLES.map((x) => x.key).filter((k) => c.cycles.includes(k)), tag: (v: number | string) => CYCLES.find((s) => s.key === v)!.label },
+    { key: 'cycle', label: 'Scenario', noun: 'scenarios', values: scenKeys(c), tag: (v: number | string) => (isTrend(v) ? scenName(v) : CYCLES.find((s) => s.key === v)!.label) },
     { key: 'emirate', label: 'Emirate', noun: 'emirates', values: c.emirates, tag: (v: number | string) => EM_LABEL[v as Emirate] },
-    ...FIELDS.map((f) => ({ key: f.key, label: f.label, noun: f.noun ?? f.label.toLowerCase(), values: c.lists[f.key], tag: (v: number | string) => f.tag(v as number) })),
+    // the trend's values are scenarios (above), not an option of their own
+    ...FIELDS.filter((f) => f.key !== 'priceGrowth').map((f) => ({ key: f.key, label: f.label, noun: f.noun ?? f.label.toLowerCase(), values: c.lists[f.key], tag: (v: number | string) => f.tag(v as number) })),
   ];
 }
 
@@ -201,7 +256,7 @@ const ignored = (combo: Record<string, number | string>) => [
   ...((combo.downPct as number) >= 1 ? LOAN_KEYS : []),
   ...((combo.moveEveryYears as number) === 0 ? ['rentAgentPct', 'moveCost'] : []),
   ...((combo.fixedYears as number) >= (combo.term as number) ? ['varRate'] : []),
-  ...(combo.cycle === 'trend' ? ['rentFollows'] : ['priceGrowth']),
+  ...(isTrend(combo.cycle) ? ['rentFollows'] : []),
 ];
 const LOAN_KEYS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'valuation', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
 
@@ -222,7 +277,7 @@ function dropCause(c: Config, combo: Record<string, number | string>): 'cash' | 
   const bad = ignored(combo).filter((k) => combo[k] !== c.lists[k][0]);
   if (!bad.length) return null;
   if ((combo.downPct as number) >= 1 && bad.some((k) => LOAN_KEYS.includes(k))) return 'cash';
-  if (bad.some((k) => k === 'priceGrowth' || k === 'rentFollows')) return 'trend';
+  if (bad.some((k) => k === 'rentFollows')) return 'trend';
   return 'other';
 }
 
@@ -271,7 +326,8 @@ export function lines(c: Config): { lines: LineDef[]; total: number; varying: Di
       ...combo,
       ...c.emFees[em],
       emirate: em,
-      scenario: combo.cycle as ScenarioKey,
+      scenario: (isTrend(combo.cycle) ? 'trend' : combo.cycle) as ScenarioKey,
+      ...(isTrend(combo.cycle) ? { priceGrowth: trendOf(combo.cycle) } : {}),
       investReturn: combo.investReturn,
       // every line runs to the same last sell year: latest buy year + horizon
       maxHold: maxBuy + c.horizon - X,
@@ -346,7 +402,6 @@ export function writeConfig(c: Config) {
 /* ---------------------------------------------------------------- plain-language count */
 
 const LOAN_OPTS = ['fixedRate', 'fixedYears', 'varRate', 'term', 'bankFeePct', 'valuation', 'lifeInsPct', 'earlySettlePct', 'earlySettleCap'];
-const TREND_OPTS = ['priceGrowth'];
 const pcts = (vs: number[]) => vs.map((v) => `${+(v * 100).toFixed(2)}%`);
 const orList = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
 
@@ -361,10 +416,8 @@ export function describeCount(c: Config, cnt: LineCount): { factors: string[]; d
   let detail: string | null = null;
   let product = 1;
 
-  // scenarios (with the trend's own options folded in)
-  const trendVar = TREND_OPTS.filter((k) => vary.has(k));
-  const hasTrend = c.cycles.includes('trend');
-  const nScen = hasTrend && trendVar.length ? c.cycles.length - 1 + trendVar.reduce((n, k) => n * c.lists[k].length, 1) : c.cycles.length;
+  // scenarios (each Constant trend value counts as one)
+  const nScen = scenKeys(c).length;
   if (nScen > 1) factors.push(`${nScen} scenarios`);
   product *= nScen;
 
@@ -391,7 +444,7 @@ export function describeCount(c: Config, cnt: LineCount): { factors: string[]; d
 
   // everything else multiplies plainly
   for (const d of cnt.varying) {
-    if (d.key === 'cycle' || d.key === 'downPct' || LOAN_OPTS.includes(d.key) || TREND_OPTS.includes(d.key)) continue;
+    if (d.key === 'cycle' || d.key === 'downPct' || LOAN_OPTS.includes(d.key)) continue;
     factors.push(`${d.values.length} ${d.noun}`);
     product *= d.values.length;
   }

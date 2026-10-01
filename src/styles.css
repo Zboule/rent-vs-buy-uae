@@ -444,3 +444,6 @@ button.mx-leaf[aria-pressed='true'] { color: var(--tint); font-weight: 650; }
 
 /* the options column starts level with the graph card now that its title is gone */
 .settings > .group-title:first-child { margin-top: 0; }
+
+/* a chip whose lines are hovered on the graph */
+.vchip.lit { box-shadow: 0 0 0 2px var(--tint); }

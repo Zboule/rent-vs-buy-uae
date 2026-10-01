@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { NEUTRAL_GROWTH, SCENARIOS, type Emirate, type ScenarioKey } from './engine';
 import {
-  CYCLES, DEFAULT_CONFIG, EMIRATES, EM_FIELDS, EM_LABEL, FIELD, FIELDS, GROUPS, MAX_LINES, NOW, clampValue, countLines, suggestions,
+  CYCLES, DEFAULT_CONFIG, addTrend, removeTrend, scenKeys, scenName, toggleScenario, toggleTrend, trendKey, trendOn, trendValues, EMIRATES, EM_FIELDS, EM_LABEL, FIELD, FIELDS, GROUPS, MAX_LINES, NOW, clampValue, countLines, suggestions,
   type Config, type FieldDef, type Kind, type LineCount,
 } from './config';
 import type { Encoding } from './encoding';
 import { COLORS } from './encoding';
 import { Chevron, PlusIcon, Sheet, fmtValue, parseOne, toInput } from './ui';
+import { useHover, type ChipRef } from './hover';
 
 type SetC = (f: (o: Config) => Config) => void;
 
@@ -62,12 +63,19 @@ export function Stepper({ value, onChange, min = 0, max = 99, step = 1, fmt, lab
 interface SheetState { key: string; mode: 'add' | 'edit'; value?: number }
 
 /** A value: tap switches it on/off, × deletes it. */
-function Chip({ label, on, color, dash, shadePct, onToggle, onRemove, locked }: {
+function Chip({ label, on, color, dash, shadePct, onToggle, onRemove, locked, hk }: {
   label: string; on: boolean; color?: string | null; dash?: string | null; shadePct?: number | null;
-  onToggle: () => void; onRemove?: () => void; locked?: boolean;
+  onToggle: () => void; onRemove?: () => void; locked?: boolean; hk?: ChipRef;
 }) {
+  const { setChip, line } = useHover();
+  // lit when a hovered line is made of this value (only for options that tell lines apart)
+  const lit = !!hk && on && !!line && line.keys.includes(hk.key) && line.combo[hk.key] === hk.v;
   return (
-    <span className={`vchip${on ? ' on' : ' off'}${onRemove ? ' rm' : ''}`}>
+    <span
+      className={`vchip${on ? ' on' : ' off'}${onRemove ? ' rm' : ''}${lit ? ' lit' : ''}`}
+      onMouseEnter={hk && on ? () => setChip(hk) : undefined}
+      onMouseLeave={hk && on ? () => setChip(null) : undefined}
+    >
       <button className="vchip-b" onClick={onToggle} aria-pressed={on} title={locked ? 'Keep at least one value on' : undefined}>
         {on && color && <span className="dot" style={{ background: color }} />}
         {label}
@@ -138,6 +146,7 @@ function OptionRow({ f, c, setC, enc, openSheet, note, disabled, title, extra }:
           return (
             <Chip
               key={v}
+              hk={{ key: f.key, v }}
               label={fmtValue(f, v)}
               on={isOn}
               locked={isOn && on.length === 1}
@@ -167,12 +176,14 @@ function ValueSheet({ s, c, setC, onClose }: { s: SheetState | null; c: Config; 
   const now = countLines(c).total;
   const onList = c.lists[f.key];
   const nextList = v == null || onList.includes(v) ? onList : [...onList, v].sort((a, b) => a - b);
-  const next = countLines({ ...c, lists: { ...c.lists, [f.key]: nextList } }).total;
+  const isTrendField = f.key === 'priceGrowth';
+  const next = countLines(isTrendField && v != null ? addTrend(c, v) : { ...c, lists: { ...c.lists, [f.key]: nextList } }).total;
   const apply = () => {
     if (v == null) return;
-    setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: nextList }, off: { ...o.off, [f.key]: (o.off[f.key] ?? []).filter((x) => x !== v) } }));
+    if (isTrendField) setC((o) => addTrend(o, v));
+    else setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: nextList }, off: { ...o.off, [f.key]: (o.off[f.key] ?? []).filter((x) => x !== v) } }));
     onClose();
-    if (s.mode === 'add') setTimeout(() => document.querySelector('.chart-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+    if (s.mode === 'add' && !isTrendField) setTimeout(() => document.querySelector('.chart-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
   };
   const remove = () => {
     setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: values.filter((x) => x !== s.value) } }));
@@ -268,12 +279,8 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
   const years = 10;
   const follows = c.lists.rentFollows[0];
   const rg = c.lists.rentGrowth[0];
-  const toggle = (k: ScenarioKey) =>
-    setC((o) => {
-      const on = o.cycles.includes(k);
-      if (on && o.cycles.length === 1) return o;
-      return { ...o, cycles: CYCLES.map((x) => x.key).filter((x) => (x === k ? !on : o.cycles.includes(x))) };
-    });
+  const toggle = (k: ScenarioKey) => setC((o) => toggleScenario(o, k));
+  const nOn = scenKeys(c).length;
   return (
     <Sheet open={open} onClose={onClose} tall title="Scenarios" subtitle="Each sets how property prices move year by year. Every ticked scenario draws its own lines.">
       <div className="scards">
@@ -281,7 +288,7 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
           const on = c.cycles.includes(sc.key);
           const path = pathOf(sc.key, c, years);
           const color = (on && enc.colorOf('cycle', sc.key)) || COLORS[i % COLORS.length];
-          const last = on && c.cycles.length === 1;
+          const last = on && nOn === 1;
           return (
             <div key={sc.key} className={on ? 'scard on' : 'scard'}>
               <button className="scard-head" onClick={() => toggle(sc.key)} aria-pressed={on} title={last ? 'Keep at least one scenario' : undefined}>
@@ -329,6 +336,38 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
             </div>
           );
         })}
+        <div className="scard on">
+          <div className="scard-head static">
+            <span className="scard-t">
+              <span className="scard-name">Constant trend</span>
+              <span className="scard-note">Prices change by the same % every year. Each value is a scenario of its own, switched on and off with the others.</span>
+            </span>
+            <button className="plus" onClick={() => openSheet({ key: 'priceGrowth', mode: 'add' })} aria-label="Add a constant trend">
+              <PlusIcon />
+              <span className="plus-t">Add</span>
+            </button>
+          </div>
+          <div className="scard-body">
+            <div className="chips">
+              {trendValues(c).map((v) => {
+                const on = trendOn(c, v);
+                return (
+                  <Chip
+                    key={v}
+                    hk={{ key: 'cycle', v: trendKey(v) }}
+                    label={scenName(trendKey(v))}
+                    on={on}
+                    locked={on && nOn === 1}
+                    color={on && nOn > 1 ? enc.colorOf('cycle', trendKey(v)) : null}
+                    onToggle={() => setC((o) => toggleTrend(o, v))}
+                    onRemove={on && nOn === 1 ? undefined : () => setC((o) => removeTrend(o, v))}
+                  />
+                );
+              })}
+              {!trendValues(c).length && <span className="opt-hint">No trend yet. Add one to draw it.</span>}
+            </div>
+          </div>
+        </div>
       </div>
     </Sheet>
   );
@@ -369,16 +408,10 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
   const more = FIELDS.filter((f) => !ESSENTIALS.includes(f.key) && f.group !== 'Constant trend');
   const matches = q ? FIELDS.filter((f) => f.group !== 'Constant trend' && `${f.label} ${f.group} ${f.hint ?? ''}`.toLowerCase().includes(q)) : [];
   const emMatch = !!q && 'emirate city dubai abu dhabi fees'.includes(q);
-  const selectedScen = CYCLES.filter((x) => c.cycles.includes(x.key));
-
-  const toggleScen = (k: ScenarioKey) =>
-    setC((o) => {
-      const on = o.cycles.includes(k);
-      if (on && o.cycles.length === 1) return o;
-      return { ...o, cycles: CYCLES.map((x) => x.key).filter((x) => (x === k ? !on : o.cycles.includes(x))) };
-    });
+  const nScen = scenKeys(c).length;
+  const toggleScen = (k: ScenarioKey) => setC((o) => toggleScenario(o, k));
   const scenRow = (
-    <div id="opt-cycle" key="cycle" className={`opt${selectedScen.length > 1 ? ' varying' : ''}`}>
+    <div id="opt-cycle" key="cycle" className={`opt${nScen > 1 ? ' varying' : ''}`}>
       <RowHead
         title="Scenario"
         hint="How property prices move, year by year"
@@ -394,45 +427,31 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
           return (
             <Chip
               key={x.key}
+              hk={{ key: 'cycle', v: x.key }}
               label={x.label.split(':')[0]}
               on={on}
-              locked={on && c.cycles.length === 1}
-              color={selectedScen.length > 1 ? enc.colorOf('cycle', x.key) : null}
+              locked={on && nScen === 1}
+              color={nScen > 1 ? enc.colorOf('cycle', x.key) : null}
               onToggle={() => toggleScen(x.key)}
+            />
+          );
+        })}
+        {trendValues(c).map((v) => {
+          const on = trendOn(c, v);
+          return (
+            <Chip
+              key={`t${v}`}
+              hk={{ key: 'cycle', v: trendKey(v) }}
+              label={scenName(trendKey(v))}
+              on={on}
+              locked={on && nScen === 1}
+              color={on && nScen > 1 ? enc.colorOf('cycle', trendKey(v)) : null}
+              onToggle={() => setC((o) => toggleTrend(o, v))}
             />
           );
         })}
       </div>
     </div>
-  );
-
-  const trendOn = c.cycles.includes('trend');
-  const trendLast = trendOn && c.cycles.length === 1;
-  const trendRow = (
-    <OptionRow
-      key="trend"
-      f={FIELD.priceGrowth}
-      c={c}
-      setC={setC}
-      enc={enc}
-      openSheet={setSheet}
-      disabled={!trendOn}
-      title="Constant trend"
-      note={trendOn ? 'Your own price change, the same every year' : 'Off. Switch on to add lines at your own % a year'}
-      extra={
-        <button
-          className={trendOn ? 'switch on' : 'switch'}
-          role="switch"
-          aria-checked={trendOn}
-          aria-label="Constant trend"
-          disabled={trendLast}
-          title={trendLast ? 'Keep at least one scenario' : undefined}
-          onClick={() => toggleScen('trend')}
-        >
-          <span className="switch-knob" />
-        </button>
-      }
-    />
   );
 
   const emRow = (
@@ -444,6 +463,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
           return (
             <Chip
               key={e}
+              hk={{ key: 'emirate', v: e }}
               label={EM_LABEL[e]}
               on={on}
               locked={on && c.emirates.length === 1}
@@ -477,7 +497,6 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
 
       <div className="group">
         {scenRow}
-        {trendRow}
         {ESSENTIALS.map((k) => row(FIELD[k]))}
       </div>
 
