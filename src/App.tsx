@@ -272,7 +272,8 @@ function Graph({ c, setC, lines: ls, enc, cnt, onCount }: {
               const on = inFocus(l);
               const hi = active === l.id;
               const focusGroup = fk === 'cycle';
-              const op = !on ? 0.06 : active ? (hi ? 1 : 0.14) : dense && !focusGroup ? 0.6 : 1;
+              // a hovered line only lifts itself (the rest stay readable); a tapped one dims the rest harder
+              const op = !on ? 0.06 : active ? (hi ? 1 : pinned ? 0.3 : 0.55) : dense && !focusGroup ? 0.6 : 1;
               return (
                 <Line
                   key={l.id}
