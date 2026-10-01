@@ -404,3 +404,16 @@ button.mx-leaf[aria-pressed='true'] { color: var(--tint); font-weight: 650; }
 .tog { display: inline-flex; align-items: center; gap: 5px; height: 36px; padding: 0 12px; border-radius: 18px; font-size: 14px; font-weight: 500; color: var(--label2); background: transparent; box-shadow: inset 0 0 0 1px var(--sep); position: relative; }
 .tog::after { content: ''; position: absolute; inset: -4px -2px; }
 .tog.on { background: var(--tint-fill); color: var(--tint); font-weight: 600; box-shadow: none; }
+
+/* ---------------------------------------------------------------- value chips: on / off */
+.opt .chips { padding: 2px 0 4px; }
+.vchip.on { background: var(--tint-fill); color: var(--label); }
+.vchip.off { background: transparent; color: var(--label2); box-shadow: inset 0 0 0 1px var(--sep); }
+.vchip.off .vchip-b { font-weight: 500; }
+.vchip.off .vchip-b { text-decoration: line-through; text-decoration-color: var(--label3); }
+.vchip.on .vchip-x { color: var(--label2); }
+.opt.varying::before { display: none; }
+/* title and + Add always share the first line */
+.opt-main { flex-wrap: nowrap !important; align-items: flex-start; min-height: 0; }
+.opt-main > .opt-text { flex: 1 1 0 !important; }
+.opt-main > .plus { margin-left: 0 !important; margin-top: -4px; }

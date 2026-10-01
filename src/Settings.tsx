@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { NEUTRAL_GROWTH, SCENARIOS, type Emirate, type ScenarioKey } from './engine';
 import {
   CYCLES, DEFAULT_CONFIG, EMIRATES, EM_FIELDS, EM_LABEL, FIELD, FIELDS, GROUPS, MAX_LINES, NOW, clampValue, countLines, suggestions,
@@ -61,19 +61,21 @@ export function Stepper({ value, onChange, min = 0, max = 99, step = 1, fmt, lab
 
 interface SheetState { key: string; mode: 'add' | 'edit'; value?: number }
 
-function Chip({ label, color, dash, shadePct, onClick, onRemove }: {
-  label: string; color?: string | null; dash?: string | null; shadePct?: number | null; onClick: () => void; onRemove?: () => void;
+/** A value: tap switches it on/off, × deletes it. */
+function Chip({ label, on, color, dash, shadePct, onToggle, onRemove, locked }: {
+  label: string; on: boolean; color?: string | null; dash?: string | null; shadePct?: number | null;
+  onToggle: () => void; onRemove?: () => void; locked?: boolean;
 }) {
   return (
-    <span className={onRemove ? 'vchip rm' : 'vchip'}>
-      <button className="vchip-b" onClick={onClick}>
-        {color && <span className="dot" style={{ background: color }} />}
-        {dash != null && !color && <Swatch color="var(--label)" dash={dash} w={18} width={2} />}
-        {shadePct != null && !color && dash == null && <Swatch color={shade('var(--glyph)', shadePct)} w={18} width={WIDTHS[shadePct % WIDTHS.length] + 0.5} />}
+    <span className={`vchip${on ? ' on' : ' off'}${onRemove ? ' rm' : ''}`}>
+      <button className="vchip-b" onClick={onToggle} aria-pressed={on} title={locked ? 'Keep at least one value on' : undefined}>
+        {on && color && <span className="dot" style={{ background: color }} />}
+        {on && dash != null && !color && <Swatch color="var(--label)" dash={dash} w={18} width={2} />}
+        {on && shadePct != null && !color && dash == null && <Swatch color={shade('var(--glyph)', shadePct)} w={18} width={WIDTHS[shadePct % WIDTHS.length] + 0.5} />}
         {label}
       </button>
       {onRemove && (
-        <button className="vchip-x" onClick={onRemove} aria-label={`Remove ${label}`}>
+        <button className="vchip-x" onClick={onRemove} aria-label={`Delete ${label}`}>
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
         </button>
       )}
@@ -81,59 +83,78 @@ function Chip({ label, color, dash, shadePct, onClick, onRemove }: {
   );
 }
 
+function RowHead({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
+  return (
+    <div className="opt-main">
+      <div className="opt-text">
+        <span className="opt-label">{title}</span>
+        {hint && <span className="opt-hint">{hint}</span>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
 function OptionRow({ f, c, setC, enc, openSheet, note, disabled }: {
   f: FieldDef; c: Config; setC: SetC; enc: Encoding; openSheet: (s: SheetState) => void; note?: string; disabled?: boolean;
 }) {
-  const values = c.lists[f.key];
-  const many = values.length > 1;
-  const setOne = (v: number) => setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: [clampValue(f, v)] } }));
-  let control = null;
-  if (!many) {
-    control =
-      f.kind === 'yrs' ? (
-        <Stepper value={values[0]} onChange={setOne} min={f.min ?? 0} max={f.max ?? 40} fmt={(v) => fmtValue(f, v)} label={f.label} disabled={disabled} />
-      ) : (
-        <NumInput kind={f.kind} value={values[0]} onCommit={setOne} label={f.label} disabled={disabled} />
-      );
-  }
+  const on = c.lists[f.key];
+  const off = c.off[f.key] ?? [];
+  const all = [...on, ...off].sort((a, b) => a - b);
+  const toggle = (v: number) =>
+    setC((o) => {
+      const l = o.lists[f.key];
+      const fo = o.off[f.key] ?? [];
+      if (l.includes(v)) {
+        if (l.length === 1) return o; // keep one value on
+        return { ...o, lists: { ...o.lists, [f.key]: l.filter((x) => x !== v) }, off: { ...o.off, [f.key]: [...fo, v] } };
+      }
+      return { ...o, lists: { ...o.lists, [f.key]: [...l, v].sort((a, b) => a - b) }, off: { ...o.off, [f.key]: fo.filter((x) => x !== v) } };
+    });
+  const remove = (v: number) =>
+    setC((o) => {
+      let l = o.lists[f.key].filter((x) => x !== v);
+      let fo = (o.off[f.key] ?? []).filter((x) => x !== v);
+      if (!l.length) { l = [fo[0]]; fo = fo.slice(1); } // deleting the last "on" value switches the next one on
+      return { ...o, lists: { ...o.lists, [f.key]: l }, off: { ...o.off, [f.key]: fo } };
+    });
   return (
-    <div id={`opt-${f.key}`} className={`opt${many ? ' varying' : ''}${disabled ? ' off' : ''}`}>
-      <div className="opt-main">
-        <div className="opt-text">
-          <span className="opt-label">
-            {f.label}
-            {many && <span className="times">{values.length} values</span>}
-          </span>
-          {(note || f.hint) && <span className="opt-hint">{note ?? f.hint}</span>}
-        </div>
-        {control}
-        <button className="plus" disabled={disabled} onClick={() => openSheet({ key: f.key, mode: 'add' })} aria-label={`Compare values for ${f.label}`}>
-          <PlusIcon />
-          <span className="plus-t">{many ? 'Add' : 'Compare'}</span>
-        </button>
-      </div>
-      {many && (
-        <div className="chips">
-          {values.map((v) => (
+    <div id={`opt-${f.key}`} className={`opt${on.length > 1 ? ' varying' : ''}${disabled ? ' off' : ''}`}>
+      <RowHead
+        title={f.label}
+        hint={note ?? f.hint}
+        action={
+          <button className="plus" disabled={disabled} onClick={() => openSheet({ key: f.key, mode: 'add' })} aria-label={`Add a value for ${f.label}`}>
+            <PlusIcon />
+            <span className="plus-t">Add</span>
+          </button>
+        }
+      />
+      <div className="chips">
+        {all.map((v) => {
+          const isOn = on.includes(v);
+          return (
             <Chip
               key={v}
               label={fmtValue(f, v)}
-              color={enc.colorOf(f.key, v)}
-              dash={enc.dashOf(f.key, v)}
-              shadePct={enc.shadeOf(f.key, v)}
-              onClick={() => openSheet({ key: f.key, mode: 'edit', value: v })}
-              onRemove={disabled ? undefined : () => setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: o.lists[f.key].filter((x) => x !== v) } }))}
+              on={isOn}
+              locked={isOn && on.length === 1}
+              color={on.length > 1 ? enc.colorOf(f.key, v) : null}
+              dash={on.length > 1 ? enc.dashOf(f.key, v) : null}
+              shadePct={on.length > 1 ? enc.shadeOf(f.key, v) : null}
+              onToggle={() => !disabled && toggle(v)}
+              onRemove={disabled || all.length === 1 ? undefined : () => remove(v)}
             />
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 function ValueSheet({ s, c, setC, onClose }: { s: SheetState | null; c: Config; setC: SetC; onClose: () => void }) {
   const f = s ? FIELD[s.key] : null;
-  const values = f ? c.lists[f.key] : [];
+  const values = f ? [...c.lists[f.key], ...(c.off[f.key] ?? [])] : [];
   const [txt, setTxt] = useState('');
   useEffect(() => {
     if (s && f) setTxt(s.mode === 'edit' && s.value != null ? toInput(f.kind, s.value) : '');
@@ -142,11 +163,12 @@ function ValueSheet({ s, c, setC, onClose }: { s: SheetState | null; c: Config; 
   const parsed = parseOne(txt, f.kind);
   const v = parsed == null ? null : clampValue(f, parsed);
   const now = countLines(c).total;
-  const nextList = s.mode === 'add' ? (v == null || values.includes(v) ? values : [...values, v]) : values.map((x) => (x === s.value && v != null ? v : x));
-  const next = countLines({ ...c, lists: { ...c.lists, [f.key]: [...new Set(nextList)] } }).total;
+  const onList = c.lists[f.key];
+  const nextList = v == null || onList.includes(v) ? onList : [...onList, v].sort((a, b) => a - b);
+  const next = countLines({ ...c, lists: { ...c.lists, [f.key]: nextList } }).total;
   const apply = () => {
     if (v == null) return;
-    setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: [...new Set(nextList)] } }));
+    setC((o) => ({ ...o, lists: { ...o.lists, [f.key]: nextList }, off: { ...o.off, [f.key]: (o.off[f.key] ?? []).filter((x) => x !== v) } }));
     onClose();
     if (s.mode === 'add') setTimeout(() => document.querySelector('.chart-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
   };
@@ -369,64 +391,65 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
   const selectedScen = CYCLES.filter((x) => c.cycles.includes(x.key));
   const values = (n: number) => <span className="times">{n} values</span>;
 
+  const toggleScen = (k: ScenarioKey) =>
+    setC((o) => {
+      const on = o.cycles.includes(k);
+      if (on && o.cycles.length === 1) return o;
+      return { ...o, cycles: CYCLES.map((x) => x.key).filter((x) => (x === k ? !on : o.cycles.includes(x))) };
+    });
   const scenRow = (
     <div id="opt-cycle" key="cycle" className={`opt${selectedScen.length > 1 ? ' varying' : ''}`}>
-      <div className="opt-main">
-        <div className="opt-text">
-          <span className="opt-label">Scenario{selectedScen.length > 1 && values(selectedScen.length)}</span>
-          <span className="opt-hint">Property prices year by year + what your savings earn</span>
-        </div>
-        <button className="plus" onClick={() => setScen(true)} aria-label="Choose scenarios">
-          <PlusIcon />
-          <span className="plus-t">{selectedScen.length > 1 ? 'Edit' : 'Compare'}</span>
-        </button>
-      </div>
+      <RowHead
+        title="Scenario"
+        hint="Property prices year by year + what your savings earn"
+        action={
+          <button className="plus" onClick={() => setScen(true)} aria-label="Edit scenarios">
+            <span className="plus-t">Edit</span>
+          </button>
+        }
+      />
       <div className="chips">
-        {selectedScen.map((x) => (
-          <Chip
-            key={x.key}
-            label={x.label.split(':')[0]}
-            color={enc.colorOf('cycle', x.key)}
-            onClick={() => setScen(true)}
-            onRemove={selectedScen.length > 1 ? () => setC((o) => ({ ...o, cycles: o.cycles.filter((k) => k !== x.key) })) : undefined}
-          />
-        ))}
+        {CYCLES.map((x) => {
+          const on = c.cycles.includes(x.key);
+          return (
+            <Chip
+              key={x.key}
+              label={x.label.split(':')[0].replace(' (your %)', '')}
+              on={on}
+              locked={on && c.cycles.length === 1}
+              color={selectedScen.length > 1 ? enc.colorOf('cycle', x.key) : null}
+              onToggle={() => toggleScen(x.key)}
+            />
+          );
+        })}
       </div>
     </div>
   );
 
-  const emMany = c.emirates.length > 1;
   const emRow = (
-    <div id="opt-emirate" key="emirate" className={`opt${emMany ? ' varying' : ''}`}>
-      <div className="opt-main">
-        <div className="opt-text">
-          <span className="opt-label">Emirate{emMany && values(2)}</span>
-          <span className="opt-hint">Sets purchase and housing fees</span>
-        </div>
-        <span className="toggles" role="group" aria-label="Emirates to include">
-          {EMIRATES.map((e) => {
-            const on = c.emirates.includes(e);
-            const sw = on && emMany ? enc.colorOf('emirate', e) : null;
-            return (
-              <button
-                key={e}
-                className={on ? 'tog on' : 'tog'}
-                aria-pressed={on}
-                title={on && !emMany ? 'Keep at least one emirate' : undefined}
-                onClick={() =>
-                  setC((o) => {
-                    if (on && o.emirates.length === 1) return o;
-                    return { ...o, emirates: EMIRATES.filter((x) => (x === e ? !on : o.emirates.includes(x))) };
-                  })
-                }
-              >
-                {sw && <span className="dot" style={{ background: sw }} />}
-                {on && !sw && <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden><path d="M2.5 6.2l2.4 2.4 4.6-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-                {EM_LABEL[e]}
-              </button>
-            );
-          })}
-        </span>
+    <div id="opt-emirate" key="emirate" className={`opt${c.emirates.length > 1 ? ' varying' : ''}`}>
+      <RowHead title="Emirate" hint="Sets purchase and housing fees" />
+      <div className="chips">
+        {EMIRATES.map((e) => {
+          const on = c.emirates.includes(e);
+          return (
+            <Chip
+              key={e}
+              label={EM_LABEL[e]}
+              on={on}
+              locked={on && c.emirates.length === 1}
+              color={c.emirates.length > 1 ? enc.colorOf('emirate', e) : null}
+              dash={c.emirates.length > 1 ? enc.dashOf('emirate', e) : null}
+              shadePct={c.emirates.length > 1 ? enc.shadeOf('emirate', e) : null}
+              onToggle={() =>
+                setC((o) => {
+                  if (on && o.emirates.length === 1) return o;
+                  return { ...o, emirates: EMIRATES.filter((x) => (x === e ? !on : o.emirates.includes(x))) };
+                })
+              }
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -437,7 +460,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
 
       {!hintSeen && cnt.varying.every((d) => d.key === 'cycle') && (
         <div className="hintcard">
-          <span>Tap <b>Compare</b> on any option to try several values. Each combination draws one line.</span>
+          <span>Tap a value to switch it on or off, <b>+ Add</b> for a new one. Every combination of the values that are on draws one line.</span>
           <button className="icon-btn" onClick={dismissHint} aria-label="Dismiss">
             <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>

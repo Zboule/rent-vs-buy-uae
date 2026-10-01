@@ -139,6 +139,7 @@ export interface Config {
   cycles: ScenarioKey[];
   emFees: Record<Emirate, Record<string, number>>;
   scenRet: Record<string, number>; // each scenario's investment return
+  off: Record<string, number[]>; // values kept in the list but switched off (not drawn)
   horizon: number; // years shown after the (latest) buy year
   sell: number | null; // the readout's sell year (calendar), null = end of horizon
   focus: string | null; // "key:value": show only lines with that value
@@ -161,6 +162,7 @@ export const DEFAULT_CONFIG: Config = {
     EMIRATES.map((e) => [e, Object.fromEntries(EM_FIELDS.map((f) => [f.key, ({ ...P, ...PRESETS[e] } as Record<string, number>)[f.key]]))]),
   ) as Record<Emirate, Record<string, number>>,
   scenRet: Object.fromEntries(SCENARIOS.map((x) => [x.key, x.ret])),
+  off: {},
   horizon: 10,
   sell: null,
   focus: null,
@@ -318,6 +320,13 @@ export function readConfig(): Config {
   }
   const hz = Number(q.get('horizon'));
   if (q.get('horizon') && Number.isFinite(hz)) c.horizon = Math.max(1, Math.min(35, Math.round(hz)));
+  for (const f of FIELDS) {
+    const v = q.get(`off.${f.key}`);
+    if (v) {
+      const vs = v.split('_').map(Number).filter(Number.isFinite).map((x) => clampValue(f, x)).filter((x) => !c.lists[f.key].includes(x));
+      if (vs.length) c.off[f.key] = [...new Set(vs)];
+    }
+  }
   const sell = Number(q.get('sell'));
   if (q.get('sell') && Number.isFinite(sell)) c.sell = Math.round(sell);
   if (q.get('focus')) c.focus = q.get('focus');
@@ -334,6 +343,7 @@ export function writeConfig(c: Config) {
     for (const f of EM_FIELDS) if (c.emFees[e][f.key] !== d.emFees[e][f.key]) q.set(`${e}.${f.key}`, String(c.emFees[e][f.key]));
   for (const x of SCENARIOS) if (c.scenRet[x.key] !== d.scenRet[x.key]) q.set(`ret.${x.key}`, String(c.scenRet[x.key]));
   if (c.horizon !== d.horizon) q.set('horizon', String(c.horizon));
+  for (const [k, vs] of Object.entries(c.off)) if (vs.length) q.set(`off.${k}`, vs.join('_'));
   if (c.sell != null) q.set('sell', String(c.sell));
   if (c.focus) q.set('focus', c.focus);
   const h = q.toString();
