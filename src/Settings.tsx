@@ -5,8 +5,8 @@ import {
   type Config, type FieldDef, type Kind, type LineCount,
 } from './config';
 import type { Encoding } from './encoding';
-import { COLORS, WIDTHS, shade } from './encoding';
-import { Chevron, PlusIcon, Sheet, Swatch, fmtValue, parseOne, toInput } from './ui';
+import { COLORS } from './encoding';
+import { Chevron, PlusIcon, Sheet, fmtValue, parseOne, toInput } from './ui';
 
 type SetC = (f: (o: Config) => Config) => void;
 
@@ -70,8 +70,6 @@ function Chip({ label, on, color, dash, shadePct, onToggle, onRemove, locked }: 
     <span className={`vchip${on ? ' on' : ' off'}${onRemove ? ' rm' : ''}`}>
       <button className="vchip-b" onClick={onToggle} aria-pressed={on} title={locked ? 'Keep at least one value on' : undefined}>
         {on && color && <span className="dot" style={{ background: color }} />}
-        {on && dash != null && !color && <Swatch color="var(--label)" dash={dash} w={18} width={2} />}
-        {on && shadePct != null && !color && dash == null && <Swatch color={shade('var(--glyph)', shadePct)} w={18} width={WIDTHS[shadePct % WIDTHS.length] + 0.5} />}
         {label}
       </button>
       {onRemove && (
@@ -389,7 +387,6 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
   const more = FIELDS.filter((f) => !ESSENTIALS.includes(f.key) && f.group !== 'Constant trend');
   const matches = q ? FIELDS.filter((f) => f.group !== 'Constant trend' && `${f.label} ${f.group} ${f.hint ?? ''}`.toLowerCase().includes(q)) : [];
   const selectedScen = CYCLES.filter((x) => c.cycles.includes(x.key));
-  const values = (n: number) => <span className="times">{n} values</span>;
 
   const toggleScen = (k: ScenarioKey) =>
     setC((o) => {
