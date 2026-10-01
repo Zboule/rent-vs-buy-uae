@@ -475,7 +475,6 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
         </div>
       )}
 
-      <h3 className="group-title">Essentials</h3>
       <div className="group">
         {scenRow}
         {trendRow}
