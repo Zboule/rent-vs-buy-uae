@@ -93,8 +93,9 @@ function RowHead({ title, hint, action }: { title: string; hint?: string; action
   );
 }
 
-function OptionRow({ f, c, setC, enc, openSheet, note, disabled }: {
+function OptionRow({ f, c, setC, enc, openSheet, note, disabled, title, extra }: {
   f: FieldDef; c: Config; setC: SetC; enc: Encoding; openSheet: (s: SheetState) => void; note?: string; disabled?: boolean;
+  title?: string; extra?: ReactNode;
 }) {
   const on = c.lists[f.key];
   const off = c.off[f.key] ?? [];
@@ -119,13 +120,16 @@ function OptionRow({ f, c, setC, enc, openSheet, note, disabled }: {
   return (
     <div id={`opt-${f.key}`} className={`opt${on.length > 1 ? ' varying' : ''}${disabled ? ' off' : ''}`}>
       <RowHead
-        title={f.label}
+        title={title ?? f.label}
         hint={note ?? f.hint}
         action={
+          <>
+          {extra}
           <button className="plus" disabled={disabled} onClick={() => openSheet({ key: f.key, mode: 'add' })} aria-label={`Add a value for ${f.label}`}>
             <PlusIcon />
             <span className="plus-t">Add</span>
           </button>
+          </>
         }
       />
       <div className="chips">
@@ -273,11 +277,10 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
   return (
     <Sheet open={open} onClose={onClose} tall title="Scenarios" subtitle="Each sets how property prices move year by year. Every ticked scenario draws its own lines.">
       <div className="scards">
-        {CYCLES.map((sc, i) => {
+        {CYCLES.filter((sc) => sc.key !== 'trend').map((sc, i) => {
           const on = c.cycles.includes(sc.key);
           const path = pathOf(sc.key, c, years);
           const color = (on && enc.colorOf('cycle', sc.key)) || COLORS[i % COLORS.length];
-          const trend = sc.key === 'trend';
           const last = on && c.cycles.length === 1;
           return (
             <div key={sc.key} className={on ? 'scard on' : 'scard'}>
@@ -289,14 +292,14 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
                   <span className="scard-name">{on && <span className="dot" style={{ background: color }} />}{sc.label}</span>
                   <span className="scard-note">{sc.note}</span>
                 </span>
-                {!trend && (
+                {(
                   <span className="spark-wrap">
                     <Sparkline path={path} color={on ? color : 'var(--label3)'} />
                     <span className="spark-l">{pctS(cum(path, 10))} in 10 years</span>
                   </span>
                 )}
               </button>
-              {!trend && (
+              {(
                 <div className="scard-body">
                   <div className="scard-facts">
                     <span>Prices {pctS(cum(path, 3))} after 3 years, {pctS(cum(path, 6))} after 6, {pctS(cum(path, 10))} after 10</span>
@@ -321,14 +324,6 @@ function ScenarioEditor({ open, onClose, c, setC, enc, openSheet }: {
                       </p>
                     </div>
                   )}
-                </div>
-              )}
-              {trend && (
-                <div className={on ? 'scard-body' : 'scard-body dim'}>
-                  {!on && <p className="opt-hint">Turn on to set your own trend.</p>}
-                  <div className="group inset">
-                    <OptionRow f={FIELD.priceGrowth} c={c} setC={setC} enc={enc} openSheet={openSheet} disabled={!on} />
-                  </div>
                 </div>
               )}
             </div>
@@ -393,12 +388,12 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
         }
       />
       <div className="chips">
-        {CYCLES.map((x) => {
+        {CYCLES.filter((x) => x.key !== 'trend').map((x) => {
           const on = c.cycles.includes(x.key);
           return (
             <Chip
               key={x.key}
-              label={x.label.split(':')[0].replace(' (your %)', '')}
+              label={x.label.split(':')[0]}
               on={on}
               locked={on && c.cycles.length === 1}
               color={selectedScen.length > 1 ? enc.colorOf('cycle', x.key) : null}
@@ -408,6 +403,35 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
         })}
       </div>
     </div>
+  );
+
+  const trendOn = c.cycles.includes('trend');
+  const trendLast = trendOn && c.cycles.length === 1;
+  const trendRow = (
+    <OptionRow
+      key="trend"
+      f={FIELD.priceGrowth}
+      c={c}
+      setC={setC}
+      enc={enc}
+      openSheet={setSheet}
+      disabled={!trendOn}
+      title="Constant trend"
+      note={trendOn ? 'Your own price change, the same every year' : 'Off. Switch on to add lines at your own % a year'}
+      extra={
+        <button
+          className={trendOn ? 'switch on' : 'switch'}
+          role="switch"
+          aria-checked={trendOn}
+          aria-label="Constant trend"
+          disabled={trendLast}
+          title={trendLast ? 'Keep at least one scenario' : undefined}
+          onClick={() => toggleScen('trend')}
+        >
+          <span className="switch-knob" />
+        </button>
+      }
+    />
   );
 
   const emRow = (
@@ -454,6 +478,7 @@ export function Settings({ c, setC, cnt, enc }: { c: Config; setC: SetC; cnt: Li
       <h3 className="group-title">Essentials</h3>
       <div className="group">
         {scenRow}
+        {trendRow}
         {emRow}
         {ESSENTIALS.map((k) => row(FIELD[k]))}
       </div>

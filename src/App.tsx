@@ -113,7 +113,7 @@ const compact = (a: number) =>
 const signed = (v: number) => (Math.round(v) === 0 ? '0' : `${v > 0 ? '+' : '−'}${compact(Math.abs(v))}`);
 const shortScenario = (key: string) => CYCLES.find((x) => x.key === key)?.label.split(':')[0] ?? key;
 // even shorter, for the phone matrix
-const tinyScenario = (key: string) => (key === 'broken' ? 'Broken' : key === 'trend' ? 'Trend' : shortScenario(key));
+const tinyScenario = (key: string) => (key === 'trend' ? 'Trend' : shortScenario(key));
 
 interface Styled extends LineDef { color: string; dash: string; width: number }
 
