@@ -52,9 +52,6 @@ export default function App() {
           <Settings c={c} setC={setC} cnt={cnt} enc={enc} />
         </aside>
       </div>
-      <footer className="foot">
-        Not financial advice. 2026 estimates, every value editable. <a href="https://github.com/Zboule/rent-vs-buy-uae">How it works</a>
-      </footer>
       <div className="bottombar" aria-hidden={false}>
         {settingsVisible && !chartVisible ? (
           <button className="bb" onClick={toChart}>
